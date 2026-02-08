@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
     # Zerodha Kite Connect
-    KITE_API_KEY: str = Field(..., description="Zerodha API Key")
-    KITE_API_SECRET: str = Field(..., description="Zerodha API Secret")
+    KITE_API_KEY: str = Field(default="your_api_key_here", description="Zerodha API Key")
+    KITE_API_SECRET: str = Field(default="your_api_secret_here", description="Zerodha API Secret")
     KITE_REDIRECT_URL: str = Field(default="http://127.0.0.1:8000/callback")
     
     # Ollama Configuration
