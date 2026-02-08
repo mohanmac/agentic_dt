@@ -1,0 +1,1 @@
+"""DayTradingPaperBot - Core package."""

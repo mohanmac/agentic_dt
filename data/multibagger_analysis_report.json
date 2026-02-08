@@ -1,0 +1,1835 @@
+{
+  "analysis_date": "2026-02-08T18:55:47.029164",
+  "parameters": {
+    "min_return_pct": 200.0,
+    "lookback_years": 5
+  },
+  "historical_winners": [
+    {
+      "symbol": "CIPLA",
+      "return_pct": 1052.47,
+      "start_price": 283.17,
+      "end_price": 3263.43,
+      "market_cap_cr": 40881.900107807916,
+      "sector": "Pharma",
+      "revenue_growth": -8.560274055011304,
+      "roe": 29.28519034607603
+    },
+    {
+      "symbol": "DELHIVERY",
+      "return_pct": 663.63,
+      "start_price": 403.68,
+      "end_price": 3082.66,
+      "market_cap_cr": 40771.13856403905,
+      "sector": "FMCG",
+      "revenue_growth": 22.204666155883103,
+      "roe": 22.733405360637576
+    },
+    {
+      "symbol": "BAJAJFINSV",
+      "return_pct": 519.96,
+      "start_price": 313.0,
+      "end_price": 1940.49,
+      "market_cap_cr": 64409.26253621168,
+      "sector": "Auto",
+      "revenue_growth": 6.788910039140173,
+      "roe": 24.155417710325786
+    },
+    {
+      "symbol": "HDFCBANK",
+      "return_pct": 356.82,
+      "start_price": 140.65,
+      "end_price": 642.52,
+      "market_cap_cr": 58744.275120322745,
+      "sector": "Technology",
+      "revenue_growth": 46.13255763280892,
+      "roe": 15.350332416729197
+    },
+    {
+      "symbol": "ASIANPAINT",
+      "return_pct": 347.0,
+      "start_price": 376.99,
+      "end_price": 1685.15,
+      "market_cap_cr": 35526.9174756113,
+      "sector": "Pharma",
+      "revenue_growth": 23.098222584694973,
+      "roe": 27.795785379861222
+    },
+    {
+      "symbol": "ZOMATO",
+      "return_pct": 339.98,
+      "start_price": 275.75,
+      "end_price": 1213.22,
+      "market_cap_cr": 54235.95944711031,
+      "sector": "Auto",
+      "revenue_growth": 36.31908970102529,
+      "roe": 23.189429249516635
+    },
+    {
+      "symbol": "EICHERMOT",
+      "return_pct": 320.12,
+      "start_price": 446.87,
+      "end_price": 1877.4,
+      "market_cap_cr": 6452.720424137119,
+      "sector": "Technology",
+      "revenue_growth": 0.5174591463016007,
+      "roe": 6.521873759121956
+    },
+    {
+      "symbol": "ICICIBANK",
+      "return_pct": 280.59,
+      "start_price": 107.95,
+      "end_price": 410.86,
+      "market_cap_cr": 20362.604194518044,
+      "sector": "Technology",
+      "revenue_growth": 27.2905373560262,
+      "roe": 18.178869608292732
+    },
+    {
+      "symbol": "LTIM",
+      "return_pct": 260.74,
+      "start_price": 444.68,
+      "end_price": 1604.18,
+      "market_cap_cr": 39019.31867174232,
+      "sector": "FMCG",
+      "revenue_growth": 11.026454432409299,
+      "roe": 5.358359876264877
+    },
+    {
+      "symbol": "ADANIPORTS",
+      "return_pct": 228.62,
+      "start_price": 86.85,
+      "end_price": 285.39,
+      "market_cap_cr": 22080.8089818527,
+      "sector": "Banking",
+      "revenue_growth": 23.57337178258875,
+      "roe": 10.791214674378892
+    },
+    {
+      "symbol": "TATASTEEL",
+      "return_pct": 209.96,
+      "start_price": 114.78,
+      "end_price": 355.75,
+      "market_cap_cr": 12666.963028610238,
+      "sector": "FMCG",
+      "revenue_growth": 35.11812355704807,
+      "roe": 9.11469373871481
+    }
+  ],
+  "winner_patterns": {
+    "count": 11,
+    "avg_return": 416.3538601142294,
+    "median_return": 339.977178536988,
+    "max_return": 1052.4687564587625,
+    "min_return": 209.95582495853645,
+    "volatility": {
+      "avg": 31.794314707648734,
+      "range": [
+        31.477427777199036,
+        32.36547744426774
+      ]
+    },
+    "sharpe_ratio": {
+      "avg": 0.6494774954336112,
+      "min": 0.46000822456308
+    },
+    "market_cap_at_start": {
+      "avg": 35922.89714108759,
+      "median": 39019.31867174232,
+      "range": [
+        6452.720424137119,
+        64409.26253621168
+      ]
+    },
+    "pe_ratio_at_start": {
+      "avg": 24.797721864999154,
+      "median": 19.712995750496894
+    },
+    "roe_at_start": {
+      "avg": 17.497688374538157,
+      "median": 18.178869608292732
+    },
+    "revenue_growth_at_start": {
+      "avg": 20.319010757537736,
+      "median": 23.098222584694973
+    },
+    "top_sectors": {
+      "FMCG": 3,
+      "Technology": 3,
+      "Pharma": 2,
+      "Auto": 2,
+      "Banking": 1
+    },
+    "key_characteristics": [
+      "Predominantly small to mid-cap (< \u20b950,000 Cr)",
+      "Strong revenue growth (>20% YoY)",
+      "Healthy ROE (>15%)"
+    ]
+  },
+  "prospects": [
+    {
+      "symbol": "KEI",
+      "total_score": 100,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 15
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b928785 Cr) in winner range",
+        "Strong revenue growth: 47.6% YoY",
+        "Healthy ROE: 26.1%",
+        "Reasonable valuation: PE 18.5",
+        "Rising volume: +70.5%",
+        "Hot sector: FMCG",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ASIANPAINT (+347%)"
+      ],
+      "current_price": 753.4433245196245,
+      "market_cap_cr": 28785.36720594292,
+      "sector": "FMCG"
+    },
+    {
+      "symbol": "DRREDDY",
+      "total_score": 94,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 9
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b928304 Cr) in winner range",
+        "Strong revenue growth: 28.4% YoY",
+        "Healthy ROE: 23.7%",
+        "Reasonable valuation: PE 23.0",
+        "Rising volume: +95.4%",
+        "Hot sector: Pharma",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), ASIANPAINT (+347%)"
+      ],
+      "current_price": 658.7687193919087,
+      "market_cap_cr": 28304.47693455716,
+      "sector": "Pharma"
+    },
+    {
+      "symbol": "ADANIPORTS",
+      "total_score": 92,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 10,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 12
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b932482 Cr) in winner range",
+        "Strong revenue growth: 49.6% YoY",
+        "Reasonable valuation: PE 12.5",
+        "Rising volume: +93.7%",
+        "Hot sector: Technology",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ASIANPAINT (+347%)"
+      ],
+      "current_price": 874.3671578779881,
+      "market_cap_cr": 32481.778091135606,
+      "sector": "Technology"
+    },
+    {
+      "symbol": "PIDILITIND",
+      "total_score": 92,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 10,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 12
+      },
+      "similar_to": [
+        "HDFCBANK (+357%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b914255 Cr) in winner range",
+        "Strong revenue growth: 49.8% YoY",
+        "Reasonable valuation: PE 22.1",
+        "Rising volume: +52.5%",
+        "Hot sector: Technology",
+        "Similar to: HDFCBANK (+357%), ICICIBANK (+281%), ADANIPORTS (+229%)"
+      ],
+      "current_price": 526.5646766937368,
+      "market_cap_cr": 14255.463401037016,
+      "sector": "Technology"
+    },
+    {
+      "symbol": "PERSISTENT",
+      "total_score": 89,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 15,
+        "volume": 10,
+        "sector": 9
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b943707 Cr) in winner range",
+        "Strong revenue growth: 30.1% YoY",
+        "Healthy ROE: 27.9%",
+        "Reasonable valuation: PE 14.2",
+        "Hot sector: Pharma",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "current_price": 338.8050896373579,
+      "market_cap_cr": 43706.718613467616,
+      "sector": "Pharma"
+    },
+    {
+      "symbol": "SUNPHARMA",
+      "total_score": 89,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 10,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 9
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b933733 Cr) in winner range",
+        "Strong revenue growth: 48.7% YoY",
+        "Reasonable valuation: PE 20.9",
+        "Rising volume: +65.1%",
+        "Hot sector: Pharma",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ASIANPAINT (+347%)"
+      ],
+      "current_price": 945.6730020537337,
+      "market_cap_cr": 33733.14690609914,
+      "sector": "Pharma"
+    },
+    {
+      "symbol": "NAVINFLUOR",
+      "total_score": 85,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 5,
+        "sector": 15
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b933742 Cr) in winner range",
+        "Strong revenue growth: 39.8% YoY",
+        "Healthy ROE: 22.8%",
+        "Hot sector: FMCG",
+        "Similar to: DELHIVERY (+664%), BAJAJFINSV (+520%), HDFCBANK (+357%)"
+      ],
+      "current_price": 891.7825776840959,
+      "market_cap_cr": 33741.533130250406,
+      "sector": "FMCG"
+    },
+    {
+      "symbol": "HDFCBANK",
+      "total_score": 85,
+      "feature_scores": {
+        "market_cap": 10,
+        "revenue_growth": 15,
+        "roe": 15,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 15
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)"
+      ],
+      "reasons": [
+        "Healthy ROE: 25.5%",
+        "Reasonable valuation: PE 16.0",
+        "Rising volume: +79.6%",
+        "Hot sector: FMCG",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "current_price": 728.2662142227321,
+      "market_cap_cr": 79805.8114918974,
+      "sector": "FMCG"
+    },
+    {
+      "symbol": "MARUTI",
+      "total_score": 85,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 15,
+        "sector": 5
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b928954 Cr) in winner range",
+        "Strong revenue growth: 29.7% YoY",
+        "Healthy ROE: 26.8%",
+        "Rising volume: +85.9%",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), ASIANPAINT (+347%)"
+      ],
+      "current_price": 531.8114444698401,
+      "market_cap_cr": 28954.42078135392,
+      "sector": "Metals"
+    },
+    {
+      "symbol": "ASIANPAINT",
+      "total_score": 85,
+      "feature_scores": {
+        "market_cap": 10,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 15,
+        "sector": 15
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)"
+      ],
+      "reasons": [
+        "Strong revenue growth: 47.5% YoY",
+        "Healthy ROE: 21.1%",
+        "Rising volume: +98.4%",
+        "Hot sector: FMCG",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ASIANPAINT (+347%)"
+      ],
+      "current_price": 590.5879668206742,
+      "market_cap_cr": 68371.0795092631,
+      "sector": "FMCG"
+    },
+    {
+      "symbol": "TECHM",
+      "total_score": 85,
+      "feature_scores": {
+        "market_cap": 10,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 15,
+        "volume": 10,
+        "sector": 15
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)"
+      ],
+      "reasons": [
+        "Strong revenue growth: 37.8% YoY",
+        "Healthy ROE: 20.3%",
+        "Reasonable valuation: PE 23.3",
+        "Hot sector: FMCG",
+        "Similar to: DELHIVERY (+664%), BAJAJFINSV (+520%), HDFCBANK (+357%)"
+      ],
+      "current_price": 603.3985389041526,
+      "market_cap_cr": 65155.46064436904,
+      "sector": "FMCG"
+    },
+    {
+      "symbol": "LTIM",
+      "total_score": 85,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 15,
+        "sector": 5
+      },
+      "similar_to": [
+        "HDFCBANK (+357%)",
+        "ZOMATO (+340%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b97775 Cr) in winner range",
+        "Strong revenue growth: 42.2% YoY",
+        "Healthy ROE: 24.3%",
+        "Rising volume: +68.1%",
+        "Hot sector: Banking",
+        "Similar to: HDFCBANK (+357%), ZOMATO (+340%)"
+      ],
+      "current_price": 869.6078449471411,
+      "market_cap_cr": 7775.380591292859,
+      "sector": "Banking"
+    },
+    {
+      "symbol": "TATAMOTORS",
+      "total_score": 85,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 10,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 5
+      },
+      "similar_to": [
+        "HDFCBANK (+357%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b911638 Cr) in winner range",
+        "Strong revenue growth: 34.2% YoY",
+        "Reasonable valuation: PE 20.3",
+        "Rising volume: +86.6%",
+        "Similar to: HDFCBANK (+357%), ZOMATO (+340%), ICICIBANK (+281%)"
+      ],
+      "current_price": 700.929104814966,
+      "market_cap_cr": 11637.769588978748,
+      "sector": "Metals"
+    },
+    {
+      "symbol": "WIPRO",
+      "total_score": 84,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 10,
+        "pe_ratio": 10,
+        "volume": 15,
+        "sector": 9
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b916892 Cr) in winner range",
+        "Strong revenue growth: 31.0% YoY",
+        "Rising volume: +65.7%",
+        "Hot sector: Pharma",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ASIANPAINT (+347%)"
+      ],
+      "current_price": 415.3443317330407,
+      "market_cap_cr": 16891.530175342927,
+      "sector": "Pharma"
+    },
+    {
+      "symbol": "HINDUNILVR",
+      "total_score": 82,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 3,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 9
+      },
+      "similar_to": [
+        "EICHERMOT (+320%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b912838 Cr) in winner range",
+        "Strong revenue growth: 39.0% YoY",
+        "Reasonable valuation: PE 17.8",
+        "Rising volume: +85.6%",
+        "Hot sector: Pharma",
+        "Similar to: EICHERMOT (+320%), ICICIBANK (+281%), ADANIPORTS (+229%)"
+      ],
+      "current_price": 497.73416340049124,
+      "market_cap_cr": 12837.726778319715,
+      "sector": "Pharma"
+    },
+    {
+      "symbol": "POLICYBZR",
+      "total_score": 81,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 15,
+        "volume": 5,
+        "sector": 6
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b953322 Cr) in winner range",
+        "Strong revenue growth: 40.4% YoY",
+        "Healthy ROE: 20.5%",
+        "Reasonable valuation: PE 19.3",
+        "Hot sector: Auto",
+        "Similar to: DELHIVERY (+664%), BAJAJFINSV (+520%), HDFCBANK (+357%)"
+      ],
+      "current_price": 541.8299794301779,
+      "market_cap_cr": 53322.18472145601,
+      "sector": "Auto"
+    },
+    {
+      "symbol": "TCS",
+      "total_score": 80,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 10,
+        "pe_ratio": 15,
+        "volume": 10,
+        "sector": 5
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b923599 Cr) in winner range",
+        "Strong revenue growth: 28.1% YoY",
+        "Reasonable valuation: PE 21.8",
+        "Similar to: DELHIVERY (+664%), ASIANPAINT (+347%), ZOMATO (+340%)"
+      ],
+      "current_price": 326.5889835861697,
+      "market_cap_cr": 23599.300375332237,
+      "sector": "Metals"
+    },
+    {
+      "symbol": "ITC",
+      "total_score": 80,
+      "feature_scores": {
+        "market_cap": 10,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 15,
+        "volume": 5,
+        "sector": 15
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ZOMATO (+340%)"
+      ],
+      "reasons": [
+        "Strong revenue growth: 47.4% YoY",
+        "Healthy ROE: 18.8%",
+        "Reasonable valuation: PE 19.4",
+        "Hot sector: FMCG",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ZOMATO (+340%)"
+      ],
+      "current_price": 810.8176204119416,
+      "market_cap_cr": 78312.26770723893,
+      "sector": "FMCG"
+    },
+    {
+      "symbol": "HAVELLS",
+      "total_score": 79,
+      "feature_scores": {
+        "market_cap": 10,
+        "revenue_growth": 20,
+        "roe": 10,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 9
+      },
+      "similar_to": [
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Strong revenue growth: 35.3% YoY",
+        "Reasonable valuation: PE 18.4",
+        "Rising volume: +86.8%",
+        "Hot sector: Pharma",
+        "Similar to: HDFCBANK (+357%), ASIANPAINT (+347%), ZOMATO (+340%)"
+      ],
+      "current_price": 379.5242541765143,
+      "market_cap_cr": 5945.487737322963,
+      "sector": "Pharma"
+    },
+    {
+      "symbol": "BAJAJFINSV",
+      "total_score": 79,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 15,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 10,
+        "sector": 9
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "ASIANPAINT (+347%)",
+        "EICHERMOT (+320%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b99356 Cr) in winner range",
+        "Healthy ROE: 19.9%",
+        "Hot sector: Pharma",
+        "Similar to: DELHIVERY (+664%), ASIANPAINT (+347%), EICHERMOT (+320%)"
+      ],
+      "current_price": 963.2141094939135,
+      "market_cap_cr": 9356.38346650773,
+      "sector": "Pharma"
+    },
+    {
+      "symbol": "NESTLEIND",
+      "total_score": 77,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 15,
+        "pe_ratio": 15,
+        "volume": 10,
+        "sector": 12
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "BAJAJFINSV (+520%)",
+        "ICICIBANK (+281%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b915658 Cr) in winner range",
+        "Healthy ROE: 23.2%",
+        "Reasonable valuation: PE 21.9",
+        "Hot sector: Technology",
+        "Similar to: CIPLA (+1052%), BAJAJFINSV (+520%), ICICIBANK (+281%)"
+      ],
+      "current_price": 655.2565361778052,
+      "market_cap_cr": 15658.088682885076,
+      "sector": "Technology"
+    },
+    {
+      "symbol": "DIVISLAB",
+      "total_score": 77,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 10,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 12
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "EICHERMOT (+320%)",
+        "LTIM (+261%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b958192 Cr) in winner range",
+        "Reasonable valuation: PE 17.3",
+        "Rising volume: +90.8%",
+        "Hot sector: Technology",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "current_price": 802.8529603782156,
+      "market_cap_cr": 58192.40048124806,
+      "sector": "Technology"
+    },
+    {
+      "symbol": "CROMPTON",
+      "total_score": 75,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 3,
+        "pe_ratio": 15,
+        "volume": 5,
+        "sector": 12
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b927752 Cr) in winner range",
+        "Strong revenue growth: 33.4% YoY",
+        "Reasonable valuation: PE 19.5",
+        "Hot sector: Technology",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ASIANPAINT (+347%)"
+      ],
+      "current_price": 491.3149440337582,
+      "market_cap_cr": 27752.13554856854,
+      "sector": "Technology"
+    },
+    {
+      "symbol": "M&M",
+      "total_score": 75,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 15,
+        "roe": 10,
+        "pe_ratio": 5,
+        "volume": 10,
+        "sector": 15
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b929244 Cr) in winner range",
+        "Hot sector: FMCG",
+        "Similar to: DELHIVERY (+664%), ASIANPAINT (+347%), ZOMATO (+340%)"
+      ],
+      "current_price": 701.7183500124986,
+      "market_cap_cr": 29244.312213910634,
+      "sector": "FMCG"
+    },
+    {
+      "symbol": "TITAN",
+      "total_score": 75,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 5,
+        "sector": 5
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b934939 Cr) in winner range",
+        "Strong revenue growth: 38.3% YoY",
+        "Healthy ROE: 18.9%",
+        "Similar to: DELHIVERY (+664%), BAJAJFINSV (+520%), HDFCBANK (+357%)"
+      ],
+      "current_price": 609.9632417097944,
+      "market_cap_cr": 34938.94010389452,
+      "sector": "Metals"
+    },
+    {
+      "symbol": "HINDCOPPER",
+      "total_score": 74,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 10,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 9
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "BAJAJFINSV (+520%)",
+        "ASIANPAINT (+347%)",
+        "LTIM (+261%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b954008 Cr) in winner range",
+        "Reasonable valuation: PE 14.3",
+        "Rising volume: +97.4%",
+        "Hot sector: Pharma",
+        "Similar to: CIPLA (+1052%), BAJAJFINSV (+520%), ASIANPAINT (+347%)"
+      ],
+      "current_price": 765.8511281868234,
+      "market_cap_cr": 54007.93062155158,
+      "sector": "Pharma"
+    },
+    {
+      "symbol": "SYMPHONY",
+      "total_score": 74,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 15,
+        "pe_ratio": 15,
+        "volume": 10,
+        "sector": 9
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "LTIM (+261%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b954606 Cr) in winner range",
+        "Healthy ROE: 26.1%",
+        "Reasonable valuation: PE 12.9",
+        "Hot sector: Pharma",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "current_price": 646.6924352200864,
+      "market_cap_cr": 54606.06966330469,
+      "sector": "Pharma"
+    },
+    {
+      "symbol": "DMART",
+      "total_score": 74,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 15,
+        "sector": 9
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "ASIANPAINT (+347%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b921221 Cr) in winner range",
+        "Healthy ROE: 18.7%",
+        "Rising volume: +89.4%",
+        "Hot sector: Pharma",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "current_price": 990.735501109751,
+      "market_cap_cr": 21220.935557523197,
+      "sector": "Pharma"
+    },
+    {
+      "symbol": "BERGEPAINT",
+      "total_score": 74,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 15,
+        "sector": 9
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b944439 Cr) in winner range",
+        "Healthy ROE: 24.2%",
+        "Rising volume: +84.4%",
+        "Hot sector: Pharma",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "current_price": 753.6460304906894,
+      "market_cap_cr": 44438.91696413467,
+      "sector": "Pharma"
+    },
+    {
+      "symbol": "LAURUSLABS",
+      "total_score": 73,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 3,
+        "pe_ratio": 10,
+        "volume": 15,
+        "sector": 5
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b949435 Cr) in winner range",
+        "Strong revenue growth: 25.3% YoY",
+        "Rising volume: +77.2%",
+        "Similar to: DELHIVERY (+664%), BAJAJFINSV (+520%), HDFCBANK (+357%)"
+      ],
+      "current_price": 939.9496581822972,
+      "market_cap_cr": 49435.35934443396,
+      "sector": "Metals"
+    },
+    {
+      "symbol": "VOLTAS",
+      "total_score": 73,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 3,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 15
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "EICHERMOT (+320%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b929280 Cr) in winner range",
+        "Reasonable valuation: PE 14.7",
+        "Rising volume: +57.8%",
+        "Hot sector: FMCG",
+        "Similar to: DELHIVERY (+664%), EICHERMOT (+320%), ICICIBANK (+281%)"
+      ],
+      "current_price": 914.7652868988372,
+      "market_cap_cr": 29280.14719623614,
+      "sector": "FMCG"
+    },
+    {
+      "symbol": "PAGEIND",
+      "total_score": 73,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 3,
+        "pe_ratio": 15,
+        "volume": 10,
+        "sector": 5
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ZOMATO (+340%)",
+        "LTIM (+261%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b955491 Cr) in winner range",
+        "Strong revenue growth: 43.5% YoY",
+        "Reasonable valuation: PE 22.9",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ZOMATO (+340%)"
+      ],
+      "current_price": 837.7118195647477,
+      "market_cap_cr": 55491.46578298771,
+      "sector": "Metals"
+    },
+    {
+      "symbol": "SUPREMEIND",
+      "total_score": 72,
+      "feature_scores": {
+        "market_cap": 10,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 5,
+        "sector": 12
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Strong revenue growth: 27.3% YoY",
+        "Healthy ROE: 20.0%",
+        "Hot sector: Technology",
+        "Similar to: DELHIVERY (+664%), BAJAJFINSV (+520%), HDFCBANK (+357%)"
+      ],
+      "current_price": 830.4017492525824,
+      "market_cap_cr": 65735.99410321916,
+      "sector": "Technology"
+    },
+    {
+      "symbol": "ADANIENT",
+      "total_score": 72,
+      "feature_scores": {
+        "market_cap": 10,
+        "revenue_growth": 5,
+        "roe": 15,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 12
+      },
+      "similar_to": [
+        "BAJAJFINSV (+520%)",
+        "EICHERMOT (+320%)",
+        "ICICIBANK (+281%)"
+      ],
+      "reasons": [
+        "Healthy ROE: 19.6%",
+        "Reasonable valuation: PE 14.9",
+        "Rising volume: +68.9%",
+        "Hot sector: Technology",
+        "Similar to: BAJAJFINSV (+520%), EICHERMOT (+320%), ICICIBANK (+281%)"
+      ],
+      "current_price": 284.10092213481914,
+      "market_cap_cr": 5059.0388214639715,
+      "sector": "Technology"
+    },
+    {
+      "symbol": "MARICO",
+      "total_score": 72,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 10,
+        "sector": 12
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "EICHERMOT (+320%)",
+        "ICICIBANK (+281%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b911353 Cr) in winner range",
+        "Healthy ROE: 29.4%",
+        "Hot sector: Technology",
+        "Similar to: CIPLA (+1052%), EICHERMOT (+320%), ICICIBANK (+281%)"
+      ],
+      "current_price": 685.1162699769744,
+      "market_cap_cr": 11352.869767333923,
+      "sector": "Technology"
+    },
+    {
+      "symbol": "INFY",
+      "total_score": 71,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 15,
+        "sector": 6
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b932718 Cr) in winner range",
+        "Healthy ROE: 24.2%",
+        "Rising volume: +61.8%",
+        "Hot sector: Auto",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "current_price": 248.34726784157434,
+      "market_cap_cr": 32717.628560022094,
+      "sector": "Auto"
+    },
+    {
+      "symbol": "LUPIN",
+      "total_score": 71,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 15,
+        "sector": 6
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "LTIM (+261%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b952769 Cr) in winner range",
+        "Healthy ROE: 23.7%",
+        "Rising volume: +69.3%",
+        "Hot sector: Auto",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "current_price": 790.4597787346283,
+      "market_cap_cr": 52768.89667951949,
+      "sector": "Auto"
+    },
+    {
+      "symbol": "BAJFINANCE",
+      "total_score": 70,
+      "feature_scores": {
+        "market_cap": 10,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 10,
+        "sector": 5
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Strong revenue growth: 26.5% YoY",
+        "Healthy ROE: 24.2%",
+        "Hot sector: Banking",
+        "Similar to: DELHIVERY (+664%), BAJAJFINSV (+520%), ASIANPAINT (+347%)"
+      ],
+      "current_price": 412.9869949784226,
+      "market_cap_cr": 4114.699069469555,
+      "sector": "Banking"
+    },
+    {
+      "symbol": "AUROPHARMA",
+      "total_score": 70,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 10,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 5
+      },
+      "similar_to": [
+        "BAJAJFINSV (+520%)",
+        "EICHERMOT (+320%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b97934 Cr) in winner range",
+        "Reasonable valuation: PE 13.3",
+        "Rising volume: +55.1%",
+        "Hot sector: Banking",
+        "Similar to: BAJAJFINSV (+520%), EICHERMOT (+320%), ADANIPORTS (+229%)"
+      ],
+      "current_price": 980.9319373820827,
+      "market_cap_cr": 7934.227246441477,
+      "sector": "Banking"
+    },
+    {
+      "symbol": "BALKRISIND",
+      "total_score": 70,
+      "feature_scores": {
+        "market_cap": 10,
+        "revenue_growth": 20,
+        "roe": 10,
+        "pe_ratio": 10,
+        "volume": 15,
+        "sector": 5
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ZOMATO (+340%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Strong revenue growth: 42.4% YoY",
+        "Rising volume: +79.7%",
+        "Hot sector: Banking",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ZOMATO (+340%)"
+      ],
+      "current_price": 798.5141248997552,
+      "market_cap_cr": 77913.85545619036,
+      "sector": "Banking"
+    },
+    {
+      "symbol": "NYKAA",
+      "total_score": 70,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 15,
+        "sector": 5
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "LTIM (+261%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b947668 Cr) in winner range",
+        "Healthy ROE: 24.2%",
+        "Rising volume: +90.6%",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "current_price": 293.6000329709291,
+      "market_cap_cr": 47668.38304615963,
+      "sector": "Metals"
+    },
+    {
+      "symbol": "ZOMATO",
+      "total_score": 69,
+      "feature_scores": {
+        "market_cap": 10,
+        "revenue_growth": 20,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 5,
+        "sector": 9
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)"
+      ],
+      "reasons": [
+        "Strong revenue growth: 34.0% YoY",
+        "Healthy ROE: 18.9%",
+        "Hot sector: Pharma",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "current_price": 737.128359863181,
+      "market_cap_cr": 78816.98069442433,
+      "sector": "Pharma"
+    },
+    {
+      "symbol": "THERMAX",
+      "total_score": 68,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 3,
+        "pe_ratio": 10,
+        "volume": 10,
+        "sector": 5
+      },
+      "similar_to": [
+        "HDFCBANK (+357%)",
+        "ZOMATO (+340%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b952878 Cr) in winner range",
+        "Strong revenue growth: 48.8% YoY",
+        "Hot sector: Banking",
+        "Similar to: HDFCBANK (+357%), ZOMATO (+340%), LTIM (+261%)"
+      ],
+      "current_price": 926.11583250299,
+      "market_cap_cr": 52878.33648780818,
+      "sector": "Banking"
+    },
+    {
+      "symbol": "SIEMENS",
+      "total_score": 68,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 3,
+        "pe_ratio": 15,
+        "volume": 5,
+        "sector": 5
+      },
+      "similar_to": [
+        "HDFCBANK (+357%)",
+        "ZOMATO (+340%)",
+        "LTIM (+261%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b957715 Cr) in winner range",
+        "Strong revenue growth: 45.3% YoY",
+        "Reasonable valuation: PE 12.1",
+        "Similar to: HDFCBANK (+357%), ZOMATO (+340%), LTIM (+261%)"
+      ],
+      "current_price": 757.728651641428,
+      "market_cap_cr": 57715.15659321578,
+      "sector": "Metals"
+    },
+    {
+      "symbol": "GODREJCP",
+      "total_score": 67,
+      "feature_scores": {
+        "market_cap": 10,
+        "revenue_growth": 20,
+        "roe": 10,
+        "pe_ratio": 10,
+        "volume": 5,
+        "sector": 12
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)"
+      ],
+      "reasons": [
+        "Strong revenue growth: 34.5% YoY",
+        "Hot sector: Technology",
+        "Similar to: DELHIVERY (+664%), BAJAJFINSV (+520%), HDFCBANK (+357%)"
+      ],
+      "current_price": 288.08446535319877,
+      "market_cap_cr": 71803.96903916626,
+      "sector": "Technology"
+    },
+    {
+      "symbol": "RADICO",
+      "total_score": 66,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 15,
+        "pe_ratio": 10,
+        "volume": 10,
+        "sector": 6
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b922157 Cr) in winner range",
+        "Healthy ROE: 25.3%",
+        "Hot sector: Auto",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "current_price": 568.8873489386378,
+      "market_cap_cr": 22157.46941932982,
+      "sector": "Auto"
+    },
+    {
+      "symbol": "RELAXO",
+      "total_score": 65,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 10,
+        "pe_ratio": 15,
+        "volume": 10,
+        "sector": 5
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "ASIANPAINT (+347%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b922418 Cr) in winner range",
+        "Reasonable valuation: PE 15.5",
+        "Similar to: DELHIVERY (+664%), ASIANPAINT (+347%), ICICIBANK (+281%)"
+      ],
+      "current_price": 968.431422375971,
+      "market_cap_cr": 22417.912969469668,
+      "sector": "Metals"
+    },
+    {
+      "symbol": "POLYCAB",
+      "total_score": 65,
+      "feature_scores": {
+        "market_cap": 10,
+        "revenue_growth": 5,
+        "roe": 15,
+        "pe_ratio": 15,
+        "volume": 15,
+        "sector": 5
+      },
+      "similar_to": [
+        "BAJAJFINSV (+520%)"
+      ],
+      "reasons": [
+        "Healthy ROE: 19.0%",
+        "Reasonable valuation: PE 12.1",
+        "Rising volume: +83.3%",
+        "Similar to: BAJAJFINSV (+520%)"
+      ],
+      "current_price": 145.29794128880678,
+      "market_cap_cr": 1524.5605649918684,
+      "sector": "Metals"
+    },
+    {
+      "symbol": "BRITANNIA",
+      "total_score": 65,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 5,
+        "roe": 15,
+        "pe_ratio": 15,
+        "volume": 5,
+        "sector": 5
+      },
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b947171 Cr) in winner range",
+        "Healthy ROE: 25.2%",
+        "Reasonable valuation: PE 22.9",
+        "Hot sector: Banking",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "current_price": 466.2420951496675,
+      "market_cap_cr": 47171.347086762755,
+      "sector": "Banking"
+    },
+    {
+      "symbol": "HCLTECH",
+      "total_score": 63,
+      "feature_scores": {
+        "market_cap": 20,
+        "revenue_growth": 20,
+        "roe": 3,
+        "pe_ratio": 10,
+        "volume": 5,
+        "sector": 5
+      },
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ],
+      "reasons": [
+        "Market cap (\u20b922298 Cr) in winner range",
+        "Strong revenue growth: 35.5% YoY",
+        "Hot sector: Banking",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ASIANPAINT (+347%)"
+      ],
+      "current_price": 784.9227880264133,
+      "market_cap_cr": 22297.52608687001,
+      "sector": "Banking"
+    }
+  ],
+  "top_prospects": [
+    {
+      "rank": 1,
+      "symbol": "KEI",
+      "score": 100,
+      "reasons": [
+        "Market cap (\u20b928785 Cr) in winner range",
+        "Strong revenue growth: 47.6% YoY",
+        "Healthy ROE: 26.1%",
+        "Reasonable valuation: PE 18.5",
+        "Rising volume: +70.5%",
+        "Hot sector: FMCG",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ASIANPAINT (+347%)"
+      ],
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)"
+      ]
+    },
+    {
+      "rank": 2,
+      "symbol": "DRREDDY",
+      "score": 94,
+      "reasons": [
+        "Market cap (\u20b928304 Cr) in winner range",
+        "Strong revenue growth: 28.4% YoY",
+        "Healthy ROE: 23.7%",
+        "Reasonable valuation: PE 23.0",
+        "Rising volume: +95.4%",
+        "Hot sector: Pharma",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), ASIANPAINT (+347%)"
+      ],
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ]
+    },
+    {
+      "rank": 3,
+      "symbol": "ADANIPORTS",
+      "score": 92,
+      "reasons": [
+        "Market cap (\u20b932482 Cr) in winner range",
+        "Strong revenue growth: 49.6% YoY",
+        "Reasonable valuation: PE 12.5",
+        "Rising volume: +93.7%",
+        "Hot sector: Technology",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ASIANPAINT (+347%)"
+      ],
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ]
+    },
+    {
+      "rank": 4,
+      "symbol": "PIDILITIND",
+      "score": 92,
+      "reasons": [
+        "Market cap (\u20b914255 Cr) in winner range",
+        "Strong revenue growth: 49.8% YoY",
+        "Reasonable valuation: PE 22.1",
+        "Rising volume: +52.5%",
+        "Hot sector: Technology",
+        "Similar to: HDFCBANK (+357%), ICICIBANK (+281%), ADANIPORTS (+229%)"
+      ],
+      "similar_to": [
+        "HDFCBANK (+357%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ]
+    },
+    {
+      "rank": 5,
+      "symbol": "PERSISTENT",
+      "score": 89,
+      "reasons": [
+        "Market cap (\u20b943707 Cr) in winner range",
+        "Strong revenue growth: 30.1% YoY",
+        "Healthy ROE: 27.9%",
+        "Reasonable valuation: PE 14.2",
+        "Hot sector: Pharma",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ]
+    },
+    {
+      "rank": 6,
+      "symbol": "SUNPHARMA",
+      "score": 89,
+      "reasons": [
+        "Market cap (\u20b933733 Cr) in winner range",
+        "Strong revenue growth: 48.7% YoY",
+        "Reasonable valuation: PE 20.9",
+        "Rising volume: +65.1%",
+        "Hot sector: Pharma",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ASIANPAINT (+347%)"
+      ],
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ]
+    },
+    {
+      "rank": 7,
+      "symbol": "NAVINFLUOR",
+      "score": 85,
+      "reasons": [
+        "Market cap (\u20b933742 Cr) in winner range",
+        "Strong revenue growth: 39.8% YoY",
+        "Healthy ROE: 22.8%",
+        "Hot sector: FMCG",
+        "Similar to: DELHIVERY (+664%), BAJAJFINSV (+520%), HDFCBANK (+357%)"
+      ],
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "LTIM (+261%)",
+        "ADANIPORTS (+229%)"
+      ]
+    },
+    {
+      "rank": 8,
+      "symbol": "HDFCBANK",
+      "score": 85,
+      "reasons": [
+        "Healthy ROE: 25.5%",
+        "Reasonable valuation: PE 16.0",
+        "Rising volume: +79.6%",
+        "Hot sector: FMCG",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), BAJAJFINSV (+520%)"
+      ],
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "BAJAJFINSV (+520%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)"
+      ]
+    },
+    {
+      "rank": 9,
+      "symbol": "MARUTI",
+      "score": 85,
+      "reasons": [
+        "Market cap (\u20b928954 Cr) in winner range",
+        "Strong revenue growth: 29.7% YoY",
+        "Healthy ROE: 26.8%",
+        "Rising volume: +85.9%",
+        "Similar to: CIPLA (+1052%), DELHIVERY (+664%), ASIANPAINT (+347%)"
+      ],
+      "similar_to": [
+        "CIPLA (+1052%)",
+        "DELHIVERY (+664%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)",
+        "ICICIBANK (+281%)",
+        "ADANIPORTS (+229%)"
+      ]
+    },
+    {
+      "rank": 10,
+      "symbol": "ASIANPAINT",
+      "score": 85,
+      "reasons": [
+        "Strong revenue growth: 47.5% YoY",
+        "Healthy ROE: 21.1%",
+        "Rising volume: +98.4%",
+        "Hot sector: FMCG",
+        "Similar to: DELHIVERY (+664%), HDFCBANK (+357%), ASIANPAINT (+347%)"
+      ],
+      "similar_to": [
+        "DELHIVERY (+664%)",
+        "HDFCBANK (+357%)",
+        "ASIANPAINT (+347%)",
+        "ZOMATO (+340%)"
+      ]
+    }
+  ]
+}
