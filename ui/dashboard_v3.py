@@ -11,13 +11,17 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from app.core.market_scanner import MarketScanner, StockCandidate
 from app.core.strategy_engine import StrategyEngine, TradeSignal
 from app.core.risk_engine import RiskEngine, RiskConfig
+
 from app.core.paper_broker import PaperBroker
+from app.core.live_broker import LiveBroker
 
 from app.core.zerodha_auth import zerodha_auth
 from app.core.config import settings
 import app.core.market_data
+import app.core.market_scanner
 import importlib
-importlib.reload(app.core.market_data)
+# importlib.reload(app.core.market_scanner)
+# importlib.reload(app.core.market_data)
 from app.core.market_data import market_data
 import time
 import random
@@ -57,9 +61,13 @@ st.markdown("""
 st.sidebar.title("🚀 Day Trading Bot V3")
 
 if 'auth_status' not in st.session_state:
-    # Check if we are already authenticated via file
-    status = zerodha_auth.get_auth_status()
-    st.session_state.auth_status = status.get("authenticated", False)
+    # FORCE LOGIN ON NEW SESSION (Do not auto-load from file)
+    # This ensures "Logout on browser close" behavior
+    st.session_state.auth_status = False
+    
+    # Clear caches to ensure no stale data persists across sessions
+    st.cache_data.clear()
+    st.cache_resource.clear()
 
 if not st.session_state.auth_status:
     st.sidebar.subheader("🔐 Zerodha Login")
@@ -70,22 +78,24 @@ if not st.session_state.auth_status:
         st.sidebar.info("Go to 'Settings' tab > Configure Credentials > Restart App.")
     else:
         # 1. Credentials (Visual Only)
-        u_user = st.sidebar.text_input("User ID", placeholder="DA0414")
-        u_pass = st.sidebar.text_input("Password", type="password", placeholder="********")
+        u_user = st.sidebar.text_input("User ID", placeholder="RVQ434")
+        u_pass = st.sidebar.text_input("Password", type="password", placeholder="")
         
         # 2. Login Button
+        # Use HTML link for maximum compatibility
         login_url = zerodha_auth.generate_login_url()
-        if u_user and u_pass:
-            st.sidebar.link_button("Login to Zerodha", login_url, type="primary")
-        else:
-            if st.sidebar.button("Login to Zerodha"):
-                st.sidebar.warning("Please enter User ID & Password")
+        st.sidebar.markdown(f'<a href="{login_url}" target="_blank" style="text-decoration: none;"><button style="width: 100%; background-color: #ff4b4b; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer;">Login to Zerodha</button></a>', unsafe_allow_html=True)
+        
+        if not (u_user and u_pass):
+            st.sidebar.caption("Provide User ID & Password for your reference")
 
         # 3. Token Input
         st.sidebar.markdown("---")
-        token_input = st.sidebar.text_area("Paste Request Token (or Access Token)")
+        with st.sidebar.form(key="auth_form"):
+            token_input = st.text_area("Paste Request Token (or Access Token)", key="auth_token_input")
+            submit_auth = st.form_submit_button("GO (Authenticate)")
         
-        if st.sidebar.button("GO (Authenticate)"):
+        if submit_auth:
             if token_input:
                 token_val = token_input.strip()
                 try:
@@ -118,7 +128,30 @@ else:
     # AUTHENTICATED STATE
     st.sidebar.success(f"✅ Authenticated (User: {u_user if 'u_user' in locals() else 'Trader'})")
     st.sidebar.markdown("---")
-    st.sidebar.info("🟦 **Mode**: PAPER TRADING")
+    # Trading Mode Selection
+    trading_mode = st.sidebar.radio(
+        "Trading Mode", 
+        ["Paper Trading", "Real Trading"],
+        index=0 if not st.session_state.get('live_mode', False) else 1,
+        help="Switch between Paper Simulation and Real Money Trading"
+    )
+
+    if trading_mode == "Real Trading":
+        if not st.session_state.get('live_mode', False):
+            # Switching to Live
+            st.session_state.live_mode = True
+            st.session_state.broker = LiveBroker()
+            st.rerun()
+        
+        st.sidebar.warning("⚠️ **REAL MONEY TRADING ACTIVE**")
+    else:
+        if st.session_state.get('live_mode', False):
+            # Switching to Paper
+            st.session_state.live_mode = False
+            st.session_state.broker = PaperBroker()
+            st.rerun()
+            
+        st.sidebar.info("🟦 **Mode**: PAPER TRADING")
     
     # Global Risk Status
     risk_status = "✅ Active" if not st.session_state.risk_engine.daily_stats.is_trading_halted else "❌ HALTED"
@@ -286,12 +319,25 @@ with tabs[0]:
             st.session_state.scan_completed = False
             st.session_state.batch_completed = False
             st.session_state.workflow_results = {'scanner': None, 'batch': None, 'autopilot': None}
+            if 'batch_tickers' in st.session_state:
+                del st.session_state.batch_tickers
             st.rerun()
     
     st.markdown("---")
     
-    # Define the Batch Universe
-    batch_tickers = ["HINDCOPPER", "MCX", "LAURUSLABS", "NAVINFLUOR", "RADICO"]
+    # Define the Batch Universe - Dynamic Selection
+    if 'batch_tickers' not in st.session_state:
+        # Focused on NIFTY MIDCAP ETFs + Top Holdings
+        universe_pool = [
+            "MID150BEES", "MOM100", "MID150CASE", 
+            "TRENT", "BEL", "COALINDIA", "IDFCFIRSTB", "TATACHEM", "POLYCAB", "PERSISTENT"
+        ]
+        # Select ETF + Top Stocks Mix
+        etfs = ["MID150BEES", "MOM100", "MID150CASE"]
+        stocks = ["TRENT", "BEL", "COALINDIA", "IDFCFIRSTB", "TATACHEM", "POLYCAB", "PERSISTENT"]
+        st.session_state.batch_tickers = etfs + random.sample(stocks, 2)
+    
+    batch_tickers = st.session_state.batch_tickers
     
     # ==================== AGENT BOX 1: MARKET SCANNER ====================
     stage1_active = st.session_state.workflow_stage == 1
@@ -302,8 +348,8 @@ with tabs[0]:
     st.markdown(f"""
     <div style='border: 4px solid {stage1_color}; border-radius: 12px; padding: 25px; margin-bottom: 15px; 
                 background: linear-gradient(135deg, rgba(0,255,0,0.05) 0%, rgba(0,0,0,0.05) 100%);'>
-        <h2 style='margin: 0; color: {stage1_color};'>🔍 AGENT 1: MARKET SCANNER {stage1_status}</h2>
-        <p style='margin: 5px 0 0 0; color: #aaa; font-size: 14px;'>Analyzes 5 emerging stocks using multi-timeframe and 9-strategy evaluation</p>
+        <h2 style='margin: 0; color: {stage1_color};'>🔍 AGENT 1: MIDCAP ETF + STOCK SCANNER {stage1_status}</h2>
+        <p style='margin: 5px 0 0 0; color: #aaa; font-size: 14px;'>Analyzes 3 Midcap ETFs & 2 Top Midcap Stocks for best opportunities</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -376,7 +422,7 @@ with tabs[0]:
         st.info("🔄 Processing batch trades...")
         
         results = []
-        balance = 10000.0  # Starting capital
+        balance = 20000.0  # Starting capital (Increased for ETF strategy)
         progress_bar = st.progress(0)
         status_text = st.empty()
         
@@ -398,12 +444,14 @@ with tabs[0]:
                     "Entry Price": "-",
                     "Exit Price": "-",
                     "Quantity": 0,
+                    "Investment": "₹0.00",
                     "P&L": "₹0.00",
+                    "ROI": "0.0%",
                     "Reason": "Risk too high"
                 })
             else:
                 # Execute trade
-                qty = int(2000 / entry_price)  # ~₹2000 per trade
+                qty = int(3000 / entry_price) if entry_price > 0 else 0 # ~₹3000 per trade (ETF Strategy)
                 invested = entry_price * qty
                 
                 if invested > balance:
@@ -413,7 +461,9 @@ with tabs[0]:
                         "Entry Price": "-",
                         "Exit Price": "-",
                         "Quantity": 0,
+                        "Investment": "₹0.00",
                         "P&L": "₹0.00",
+                        "ROI": "0.0%",
                         "Reason": "Insufficient balance"
                     })
                 else:
@@ -430,7 +480,9 @@ with tabs[0]:
                         "Entry Price": f"₹{entry_price:.2f}",
                         "Exit Price": f"₹{exit_price:.2f}",
                         "Quantity": qty,
+                        "Investment": f"₹{invested:.2f}",
                         "P&L": f"₹{pnl:.2f}",
+                        "ROI": f"{(pnl/invested)*100:.2f}%",
                         "Reason": "Target hit" if pnl > 0 else "Stop loss"
                     })
             
@@ -548,6 +600,23 @@ with tabs[0]:
         
         # Get active strategies from the engine
         strategies = st.session_state.strategy_engine.strategies
+
+        # --- HFT-LITE EXECUTION LOOP (Every Cycle) ---
+        if 'broker' in st.session_state:
+             if st.session_state.get('live_mode', False):
+                 # LIVE MODE: Broker handles data fetching internally
+                 if hasattr(st.session_state.broker, 'process_algo_orders'):
+                     st.session_state.broker.process_algo_orders()
+             else:
+                 # PAPER MODE: Needs market data injection
+                 # We fetch quotes for all 5 batch tickers to support slicing checks
+                 try:
+                     market_data_map = market_data.get_quote(batch_tickers)
+                     if hasattr(st.session_state.broker, 'process_algo_orders'):
+                         st.session_state.broker.process_algo_orders(market_data_map)
+                 except Exception as e:
+                     # Silently fail or log in debug, don't crash dashboard
+                     pass
         
         # Display strategy status in a grid
         st.markdown("#### 📊 Active Strategy Matrix")
@@ -662,7 +731,12 @@ with tabs[2]:
     positions = st.session_state.broker.get_portfolio()
     if positions:
         for p in positions:
-            p.ltp = p.avg_price * 1.01 # Mock live price update
+            # Only mock LTP in paper mode if needed, otherwise use what broker provides
+            # But for paper mode visual demo, we might want real market data ideally.
+            # Removing the mandatory mock override allows LiveBroker to show real LTP.
+            if not st.session_state.get('live_mode', False) and p.ltp == 0:
+                 p.ltp = p.avg_price * 1.01 # Fallback mock if no data
+            
             pnl_color = "green" if p.unrealized_pnl >= 0 else "red"
             st.markdown(f"""
             <div style='border:1px solid #333; padding:10px; border-radius:5px; margin-bottom:10px;'>
@@ -683,7 +757,8 @@ with tabs[3]:
     st.header("Order Book & Tools")
     st.dataframe([vars(o) for o in st.session_state.broker.orders])
     
-    st.subheader("Manual Paper Entry (Test)")
+    entry_title = "Manual Order Entry (REAL MONEY ⚠️)" if st.session_state.get('live_mode') else "Manual Paper Entry (Test)"
+    st.subheader(entry_title)
     with st.form("manual_order"):
         sym = st.text_input("Symbol")
         qty = st.number_input("Qty", min_value=1, value=1)

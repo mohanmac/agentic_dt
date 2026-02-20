@@ -154,7 +154,7 @@ def run_dashboard():
     print("Launching Streamlit dashboard...")
     print("Dashboard will open in your browser.\n")
     
-    dashboard_path = Path(__file__).parent / "ui" / "dashboard.py"
+    dashboard_path = Path(__file__).parent.parent / "ui" / "dashboard.py"
     
     subprocess.run([
         "streamlit", "run",

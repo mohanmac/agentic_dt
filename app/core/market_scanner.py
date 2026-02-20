@@ -14,6 +14,7 @@ class StockCandidate:
     dma_50: float
     dma_200: float
     rsi: float
+    adx: float = None  # Added for regime detection
     is_nifty50: bool = False
     is_bank_nifty: bool = False
 
@@ -35,6 +36,11 @@ class MarketScanner:
             return False, "Excluded: NIFTY 50"
         if stock.is_bank_nifty: # simple check, ideally check set
             return False, "Excluded: BANK NIFTY"
+
+        # 1.5 ETF Whitelist (Automatic Qualification)
+        etf_keywords = ["BEES", "ETF", "MOM100", "MID150CASE"]
+        if any(kw in stock.symbol for kw in etf_keywords):
+            return True, "Strategic ETF Selection"
         
         # 2. Price Filters (₹20 - ₹10000)
         if not (20 <= stock.price <= 10000):

@@ -3,6 +3,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 import random
+from app.core.execution_algo import ExecutionAlgo
 
 @dataclass
 class PaperOrder:
@@ -34,11 +35,59 @@ class PaperBroker:
         self.positions: Dict[str, PaperPosition] = {}
         self.balance: float = 100000.0  # Starting Paper Capital
         self.realized_pnl: float = 0.0
+        self.algo_engine = ExecutionAlgo()
 
-    def place_order(self, symbol: str, transaction_type: str, quantity: int, price: float) -> PaperOrder:
+    def process_algo_orders(self, market_data_map: dict):
+        """
+        Process pending sliced orders (HFT-Lite) using provided market data.
+        market_data_map: {symbol: {"ltp": float, "vwap": float}}
+        """
+        if not self.algo_engine.active_slices:
+            return
+
+        try:
+            for parent_id in list(self.algo_engine.active_slices.keys()):
+                slice_data = self.algo_engine.active_slices[parent_id]
+                symbol = slice_data["symbol"]
+                
+                # Get Market Data from map
+                data = market_data_map.get(symbol)
+                if not data: continue
+                
+                ltp = data.get('ltp', 0)
+                vwap = data.get('vwap', 0)
+                
+                # Check Algorithm
+                qty_to_fill = self.algo_engine.get_next_slice(parent_id, ltp, vwap)
+                
+                if qty_to_fill and qty_to_fill > 0:
+                    # Execute slice
+                    self.place_order(symbol, "BUY", qty_to_fill, ltp, strategy_name="ALGO_SLICE")
+                    
+        except Exception:
+            pass
+
+    def place_order(self, symbol: str, transaction_type: str, quantity: int, price: float, strategy_name: str = None) -> PaperOrder:
         """
         Simulates order placement with slippage and brokerage.
         """
+        # HFT-Lite Logic: Slice Institutional Flow Orders
+        if strategy_name == "InstitutionalFlow" and quantity > 100:
+             # Create parent order ID (virtual)
+             parent_id = f"SLICE_{symbol}_{int(datetime.datetime.now().timestamp())}"
+             self.algo_engine.create_sliced_order(parent_id, symbol, quantity, slice_count=10)
+             
+             return PaperOrder(
+                order_id=parent_id,
+                symbol=symbol,
+                transaction_type=transaction_type,
+                quantity=quantity,
+                price=price,
+                status="SLICING", # Custom status
+                timestamp=datetime.datetime.now(),
+                brokerage_est=0.0
+            )
+
         # 1. Simulate Slippage (0.05% to 0.1%)
         slippage_pct = random.uniform(0.0005, 0.001)
         executed_price = price * (1 + slippage_pct) if transaction_type == "BUY" else price * (1 - slippage_pct)

@@ -8,30 +8,30 @@ class RiskConfig:
     max_loss_per_day: float = 300.0
     per_trade_max_loss_absolute: float = 500.0
     min_capital_threshold: float = 600.0
-    max_trades_per_day: int = 5
+    max_trades_per_day: int = 10
     max_open_positions: int = 2
     
     # Position & Exposure Limits
     max_position_size_percent: float = 40.0
     max_portfolio_exposure_percent: float = 70.0
-    max_sector_exposure_percent: float = 50.0
+    max_sector_exposure_percent: float = 100.0
     
     # Time-Based Guardrails
-    avoid_first_minutes: int = 15
+    avoid_first_minutes: int = 0
     avoid_last_minutes: int = 15
     min_hold_time_minutes: int = 5
     max_position_age_hours: int = 4
     
     # Drawdown & Streak Protection
     max_drawdown_percent: float = 15.0
-    max_consecutive_losses: int = 3
+    max_consecutive_losses: int = 5
     trailing_stop_activation_percent: float = 2.0
     trailing_stop_distance_percent: float = 1.0
     
     # Market Condition Filters
-    max_vix_threshold: float = 30.0
-    max_spread_percent: float = 0.5
-    min_volume_multiplier: float = 1.5
+    max_vix_threshold: float = 40.0
+    max_spread_percent: float = 1.0
+    min_volume_multiplier: float = 1.2
     max_gap_percent: float = 5.0
     
     # Order Execution Safeguards

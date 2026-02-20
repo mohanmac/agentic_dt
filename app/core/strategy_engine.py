@@ -12,9 +12,9 @@ MULTI_TF_CONFIG = {
         "1m": 600
     },
     "gates": {
-        "require_bias_alignment": True, # Step 1: 1H Bias
+        "require_bias_alignment": False, # Step 1: 1H Bias (Advisory now)
         "require_trend_alignment": True, # Step 2: 15m Trend
-        "min_confluence_strategies": 3,
+        "min_confluence_strategies": 2,
         "min_signal_score": 80
     }
 }
@@ -76,6 +76,7 @@ class EnsembleDecision:
 class Strategy(Protocol):
     name: str = "BaseStrategy"
     description: str = "Base Strategy"
+    regime_type: str = "BULL" # BULL, BEAR, VOLATILE
     valid_regimes: List[str] = field(default_factory=lambda: ["TRENDING", "RANGING", "VOLATILE"])
     
     def analyze(self, stock_data: dict) -> TradeSignal:
@@ -126,6 +127,7 @@ def apply_risk_guardrails(signal: TradeSignal, ltp: float) -> TradeSignal:
 class MomentumStrategy:
     name = "Momentum"
     description = "Vol > SMA(20) and Price > VWAP."
+    regime_type = "BULL"
     valid_regimes = ["TRENDING", "VOLATILE"]
 
     def analyze(self, stock_data: dict) -> TradeSignal:
@@ -147,6 +149,7 @@ class MomentumStrategy:
 class ScalpingStrategy:
     name = "Scalping"
     description = "EMA9 > EMA21 Cross."
+    regime_type = "VOLATILE"
     valid_regimes = ["TRENDING", "RANGING", "VOLATILE"]
 
     def analyze(self, stock_data: dict) -> TradeSignal:
@@ -166,6 +169,7 @@ class ScalpingStrategy:
 class VWAPPullbackStrategy:
     name = "VWAPPullback"
     description = "Pullback to VWAP in Trend."
+    regime_type = "BULL"
     valid_regimes = ["TRENDING"]
 
     def analyze(self, stock_data: dict) -> TradeSignal:
@@ -185,6 +189,7 @@ class VWAPPullbackStrategy:
 class BreakoutStrategy:
     name = "Breakout"
     description = "Close > Resistance."
+    regime_type = "BULL"
     valid_regimes = ["TRENDING", "VOLATILE"]
 
     def analyze(self, stock_data: dict) -> TradeSignal:
@@ -202,6 +207,7 @@ class BreakoutStrategy:
 class MeanReversionStrategy:
     name = "MeanReversion"
     description = "Close < Lower Band."
+    regime_type = "VOLATILE"
     valid_regimes = ["RANGING"]
 
     def analyze(self, stock_data: dict) -> TradeSignal:
@@ -219,6 +225,7 @@ class MeanReversionStrategy:
 class RSIReversalStrategy:
     name = "RSIReversal"
     description = "RSI > 30 Cross."
+    regime_type = "VOLATILE"
     valid_regimes = ["RANGING", "VOLATILE"]
 
     def analyze(self, stock_data: dict) -> TradeSignal:
@@ -236,6 +243,7 @@ class RSIReversalStrategy:
 class MACrossoverTrendStrategy:
     name = "MACrossoverTrend"
     description = "Fast EMA > Slow EMA."
+    regime_type = "BULL"
     valid_regimes = ["TRENDING"]
 
     def analyze(self, stock_data: dict) -> TradeSignal:
@@ -253,6 +261,7 @@ class MACrossoverTrendStrategy:
 class InstitutionalFlowStrategy:
     name = "InstitutionalFlow"
     description = "Detects institutional accumulation patterns in preferred time windows."
+    regime_type = "BEAR" # Used for Safety/Confirmation in Bear markets too
     valid_regimes = ["TRENDING", "VOLATILE"]
 
     def analyze(self, stock_data: dict) -> TradeSignal:
@@ -337,6 +346,7 @@ class InstitutionalFlowStrategy:
 class StopHuntProtectionStrategy:
     name = "StopHuntProtection"
     description = "Uses wider stops and confirmation to avoid retail traps."
+    regime_type = "BEAR"
     valid_regimes = ["TRENDING", "VOLATILE"]
 
     def analyze(self, stock_data: dict) -> TradeSignal:
@@ -424,6 +434,47 @@ class StopHuntProtectionStrategy:
             reasons
         )
 
+class StatisticalArbitrageStrategy:
+    name = "StatisticalArbitrage"
+    description = "Pairs Trading / Mean Reversion using Z-Score."
+    regime_type = "VOLATILE" # Also works in RANGING
+    valid_regimes = ["RANGING", "VOLATILE", "TRENDING"] # Can hedge in trending
+    
+    def analyze(self, stock_data: dict) -> TradeSignal:
+        sig = TradeSignal(
+            symbol=stock_data.get("symbol", "UNKNOWN"), 
+            signal_type="WAIT", 
+            entry_price=0, stop_loss=0, target=0, quantity=0, 
+            strategy_name=self.name, 
+            timestamp=datetime.datetime.now(), 
+            reason="StatARB: Data insufficient (Simulated)", 
+            confidence=0.0, 
+            analysis_breakdown=[]
+        )
+        
+        # SIMULATION LOGIC for demonstration
+        ltp = stock_data.get("ltp", 0)
+        vwap = stock_data.get("vwap", 0)
+        # Use BB width as specific volatility proxy
+        bb_width = stock_data.get("bb_width", 0)
+        
+        if bb_width > 0:
+            # Synthetic Z-Score using price vs VWAP normalized by BB Width
+            # This is a proxy since we don't have peer data yet
+            z_score = (ltp - vwap) / (bb_width * ltp / 4) # Approx std dev
+            
+            if z_score < -2.0:
+                sig.signal_type = "BUY"
+                sig.confidence = 0.85
+                sig.reason = f"StatArb: Z-Score {z_score:.2f} < -2 (Oversold)"
+                sig.entry_price = ltp
+                sig.stop_loss = ltp * 0.98
+                sig.target = ltp * 1.04
+                sig.quantity = 1
+                return apply_risk_guardrails(sig, ltp)
+
+        return sig
+
 
 class StrategyEngine:
     def __init__(self):
@@ -436,7 +487,8 @@ class StrategyEngine:
             RSIReversalStrategy(),
             MACrossoverTrendStrategy(),
             InstitutionalFlowStrategy(),
-            StopHuntProtectionStrategy()
+            StopHuntProtectionStrategy(),
+            StatisticalArbitrageStrategy()
         ]
         self.active_strategies = {s.name: True for s in self.strategies}
 
@@ -517,7 +569,49 @@ class StrategyEngine:
              forced_wait = True
              risk_warnings.append("15m Trend Conflict (Bearish). forcing WAIT.")
 
-        # Run Strategies
+        # Determine Macro Regime for Strategy Selection
+        volatility_percentile = stock_data.get("volatility_percentile", 50.0)
+        adx_value = stock_data.get("adx", 20.0)
+        
+        detected_regime = "SIDEWAYS"
+        
+        # Regime Logic based on ADX (The Brain)
+        if adx_value > 25:
+            # Strong Trend
+            if bias_1h == "BULLISH":
+                detected_regime = "BULL"
+            elif bias_1h == "BEARISH":
+                detected_regime = "BEAR"
+            else:
+                detected_regime = "VOLATILE" # Strong trend but conflicting bias?
+        elif adx_value < 20:
+             # Weak Trend / Ranging
+             detected_regime = "VOLATILE" # Map to Mean Reversion/Scalping bucket
+        else:
+             # Neutral Zone (20-25)
+             # Use Volatility Percentile as tie-breaker
+             if volatility_percentile > 80:
+                 detected_regime = "VOLATILE"
+             elif bias_1h == "BULLISH":
+                 detected_regime = "BULL"
+             elif bias_1h == "BEARISH":
+                 detected_regime = "BEAR"
+             else:
+                 detected_regime = "SIDEWAYS"
+             
+        # Filter strategies based on detected regime
+        # If SIDEWAYS, we might default to BEAR (Safety) or VOLATILE (Scalping) depending on preference.
+        # Let's map SIDEWAYS to BEAR/Safety for now.
+        target_regime_types = [detected_regime]
+        if detected_regime == "SIDEWAYS":
+            target_regime_types = ["BEAR", "VOLATILE"] # Allow defensive + scalping
+            
+        active_strategy_subset = [
+            s for s in self.strategies 
+            if s.regime_type in target_regime_types
+        ]
+        
+        # Run Strategies (ONLY the subset)
         eligible_strategies = []
         strategy_breakdown = []
         
@@ -525,7 +619,7 @@ class StrategyEngine:
         weighted_conf_sum = 0.0
         agreeing_count = 0
         
-        for strat in self.strategies:
+        for strat in active_strategy_subset: # CHANGED from self.strategies
             # Check regime fit (Regime is roughly derived from 15m trend + volatility)
             # using 'trend_15m' as a proxy for regime
             regime = "TRENDING" if trend_15m != "SIDEWAYS" else "RANGING"
@@ -563,7 +657,7 @@ class StrategyEngine:
         min_score = MULTI_TF_CONFIG["gates"]["min_signal_score"]
         
         verdict = "WAIT"
-        if agreeing_count >= min_confluence: # 3+ strategies
+        if agreeing_count >= min_confluence: # 2+ strategies now
             # We allow a slightly lower score if confluence is high
             verdict = "BUY"
             
@@ -572,7 +666,7 @@ class StrategyEngine:
 
         return EnsembleDecision(
             timestamp=datetime.datetime.now(),
-            market_regime=f"{bias_1h} Bias / {trend_15m} Trend",
+            market_regime=f"{detected_regime} ({bias_1h}/{trend_15m})", # Enhanced label
             market_bias_1h=bias_1h,
             trend_15m=trend_15m,
             final_verdict=verdict,

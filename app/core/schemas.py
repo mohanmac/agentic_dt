@@ -74,6 +74,7 @@ class MarketSnapshot(BaseModel):
     bb_lower: Optional[float] = None
     bb_width: Optional[float] = None
     atr: Optional[float] = None
+    adx: Optional[float] = None
     
     # Market regime
     regime: MarketRegime

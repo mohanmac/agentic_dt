@@ -11,3 +11,4 @@ python-dotenv>=1.0.0
 pytz
 plotly>=5.18.0
 google-generativeai>=0.3.2
+statsmodels>=0.14.0
