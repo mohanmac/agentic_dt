@@ -1,0 +1,21 @@
+{
+    "name": "Day Trading Bot V4",
+    "short_name": "TradingBot",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0E1117",
+    "theme_color": "#FF4B4B",
+    "description": "Premium AI-Powered Day Trading Bot for Indian Markets",
+    "icons": [
+        {
+            "src": "trading_bot_app_icon.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "trading_bot_app_icon.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

@@ -18,16 +18,25 @@ class ZerodhaAuth:
     """Handles Zerodha authentication using OAuth redirect flow."""
     
     def __init__(self):
-        self.api_key = settings.KITE_API_KEY
-        self.api_secret = settings.KITE_API_SECRET
-        self.redirect_url = settings.KITE_REDIRECT_URL
         self.token_file = settings.get_token_file()
         
-        # Initialize KiteConnect client
-        self.kite = KiteConnect(api_key=self.api_key)
+        # Initialize KiteConnect client with a placeholder, will update dynamically
+        self.kite = KiteConnect(api_key=settings.KITE_API_KEY.strip())
         
         # Load existing token if available
         self._load_token()
+    
+    @property
+    def api_key(self) -> str:
+        return settings.KITE_API_KEY.strip()
+
+    @property
+    def api_secret(self) -> str:
+        return settings.KITE_API_SECRET.strip()
+
+    @property
+    def redirect_url(self) -> str:
+        return settings.KITE_REDIRECT_URL.strip()
     
     def generate_login_url(self) -> str:
         """
@@ -36,6 +45,8 @@ class ZerodhaAuth:
         Returns:
             Login URL that user should visit in browser
         """
+        # Ensure kite client has the latest api_key
+        self.kite.api_key = self.api_key
         login_url = self.kite.login_url()
         
         log_event("login_url_generated", {
@@ -62,6 +73,9 @@ class ZerodhaAuth:
             Exception if token exchange fails
         """
         try:
+            # Ensure kite client has the latest api_key
+            self.kite.api_key = self.api_key
+            
             # Generate session
             session_data = self.kite.generate_session(
                 request_token=request_token,

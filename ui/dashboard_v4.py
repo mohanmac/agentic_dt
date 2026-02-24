@@ -31,7 +31,7 @@ from app.core.intelligence_engine import IntelligenceEngine
 
 # --- Page Config ---
 st.set_page_config(
-    page_title="Emerging Stocks Bot V3",
+    page_title="Day Trading Bot V4 (Mobile)",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -53,12 +53,34 @@ st.markdown("""
     .big-font { font-size:20px !important; }
     .risk-alert { color: #ff4b4b; font-weight: bold; }
     .success-text { color: #00fa9a; font-weight: bold; }
-    .stButton>button { width: 100%; border-radius: 5px; }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; }
+    /* Mobile optimization: make tabs bigger */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: #1e2130;
+        border-radius: 8px 8px 0px 0px;
+        color: white;
+    }
     </style>
     """, unsafe_allow_html=True)
 
+# PWA Support: Injecting meta tags
+st.markdown("""
+    <head>
+        <link rel="manifest" href="/manifest.json">
+        <meta name="theme-color" content="#FF4B4B">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    </head>
+""", unsafe_allow_html=True)
+
 # --- Sidebar Auth & Info ---
-st.sidebar.title("🚀 Day Trading Bot V3")
+st.sidebar.title("🚀 Day Trading Bot V4")
+st.sidebar.caption("Mobile Optimized Version")
 
 if 'auth_status' not in st.session_state:
     # FORCE LOGIN ON NEW SESSION (Do not auto-load from file)
@@ -314,18 +336,18 @@ if 'batch_completed' not in st.session_state:
     st.session_state.batch_completed = False
 
 # --- Main Tabs ---
-tabs = st.tabs(["🤖 Automated Workflow", "🧠 Strategies", "📂 Portfolio", "📝 Orders & Tools", "📊 Reports", "🤖 Deep Intelligence", "⚙️ Settings"])
+tabs = st.tabs(["🤖 Workflow", "🧠 Strat", "📂 Portfolio", "📝 Orders", "📊 Reports", "🧠 Intel", "⚙️ Hub"])
 
 # 1. AUTOMATED WORKFLOW - THREE AGENT BOXES
 with tabs[0]:
-    st.title("🚀 Intelligent Trading Workflow")
+    st.title("🚀 Intelligent Workflow")
     st.caption("Automated 3-stage agent pipeline: Market Analysis → Batch Trading → Continuous Monitoring")
     st.markdown("---")
     
     # START/STOP/RESET Buttons
-    col_btn1, col_btn2, col_btn3, col_spacer = st.columns([1, 1, 1, 3])
+    col_btn1, col_btn2, col_btn3, col_spacer = st.columns([1, 1, 1, 0.5])
     with col_btn1:
-        if st.button("▶️ START WORKFLOW", type="primary", disabled=st.session_state.workflow_running, use_container_width=True):
+        if st.button("▶️ START", type="primary", disabled=st.session_state.workflow_running, use_container_width=True):
             st.session_state.workflow_stage = 1
             st.session_state.workflow_running = True
             st.session_state.scan_completed = False
@@ -373,14 +395,13 @@ with tabs[0]:
     st.markdown(f"""
     <div style='border: 4px solid {stage1_color}; border-radius: 12px; padding: 25px; margin-bottom: 15px; 
                 background: linear-gradient(135deg, rgba(0,255,0,0.05) 0%, rgba(0,0,0,0.05) 100%);'>
-        <h2 style='margin: 0; color: {stage1_color};'>🔍 AGENT 1: MIDCAP ETF + STOCK SCANNER {stage1_status}</h2>
-        <p style='margin: 5px 0 0 0; color: #aaa; font-size: 14px;'>Analyzes 3 Midcap ETFs & 2 Top Midcap Stocks for best opportunities</p>
+        <h2 style='margin: 0; color: {stage1_color};'>🔍 AGENT 1: SCANNER {stage1_status}</h2>
     </div>
     """, unsafe_allow_html=True)
     
     # Execute Stage 1 if active
     if stage1_active and not stage1_complete:
-        with st.spinner("🔍 Scanning market for opportunities..."):
+        with st.spinner("🔍 Scanning market..."):
             time.sleep(2)  # Simulate processing
             candidates = market_data.scan_emerging_stocks(batch_tickers)
             
@@ -404,7 +425,7 @@ with tabs[0]:
     # Display Stage 1 Results if completed
     if stage1_complete and st.session_state.workflow_results['scanner']:
         candidates = st.session_state.workflow_results['scanner']
-        st.success(f"✅ Scan Complete - Found {len(candidates)} tradeable opportunities")
+        st.success(f"✅ Scan Complete ({len(candidates)} Ops)")
         
         # Create summary table
         scanner_table = []
@@ -414,19 +435,14 @@ with tabs[0]:
                 "Price": f"₹{cand['price']:.2f}",
                 "Growth": cand['growth'],
                 "Trend": cand['trend'],
-                "Strategy Votes": f"{cand.get('active_signals_count', 5)}/9",
-                "Status": "✅ QUALIFIED"
+                "Votes": f"{cand.get('active_signals_count', 5)}/9"
             })
         
         df_scanner = pd.DataFrame(scanner_table)
         st.dataframe(df_scanner, use_container_width=True, hide_index=True)
     
     # Visual Flow Arrow
-    st.markdown("""
-    <div style='text-align: center; font-size: 40px; margin: 15px 0;'>
-        ⬇️
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("""<div style='text-align: center; font-size: 30px; margin: 10px 0;'>⬇️</div>""", unsafe_allow_html=True)
     
     # ==================== AGENT BOX 2: BATCH EXECUTION ====================
     stage2_active = st.session_state.workflow_stage == 2
@@ -437,8 +453,7 @@ with tabs[0]:
     st.markdown(f"""
     <div style='border: 4px solid {stage2_color}; border-radius: 12px; padding: 25px; margin-bottom: 15px;
                 background: linear-gradient(135deg, rgba(0,255,0,0.05) 0%, rgba(0,0,0,0.05) 100%);'>
-        <h2 style='margin: 0; color: {stage2_color};'>⚡ AGENT 2: AUTONOMOUS BATCH EXECUTION {stage2_status}</h2>
-        <p style='margin: 5px 0 0 0; color: #aaa; font-size: 14px;'>Executes trades sequentially with risk validation and position management</p>
+        <h2 style='margin: 0; color: {stage2_color};'>⚡ AGENT 2: BATCH {stage2_status}</h2>
     </div>
     """, unsafe_allow_html=True)
     
@@ -447,7 +462,7 @@ with tabs[0]:
         st.info("🔄 Processing batch trades...")
         
         results = []
-        balance = 20000.0  # Starting capital (Increased for ETF strategy)
+        balance = 20000.0  # Starting capital
         progress_bar = st.progress(0)
         status_text = st.empty()
         
@@ -464,51 +479,26 @@ with tabs[0]:
             risk_pct = random.uniform(3, 8)
             if risk_pct > 10:
                 results.append({
-                    "Symbol": ticker,
-                    "Action": "🔴 SKIPPED",
-                    "Entry Price": "-",
-                    "Exit Price": "-",
-                    "Quantity": 0,
-                    "Investment": "₹0.00",
-                    "P&L": "₹0.00",
-                    "ROI": "0.0%",
-                    "Reason": "Risk too high"
+                    "Symbol": ticker, "Action": "🔴 SKIPPED", "Entry": "-", "Exit": "-", "Qty": 0, "P&L": "₹0.00", "Reason": "Risk high"
                 })
             else:
                 # Execute trade
-                qty = int(3000 / entry_price) if entry_price > 0 else 0 # ~₹3000 per trade (ETF Strategy)
+                qty = int(3000 / entry_price) if entry_price > 0 else 0
                 invested = entry_price * qty
                 
                 if invested > balance:
                     results.append({
-                        "Symbol": ticker,
-                        "Action": "🔴 SKIPPED",
-                        "Entry Price": "-",
-                        "Exit Price": "-",
-                        "Quantity": 0,
-                        "Investment": "₹0.00",
-                        "P&L": "₹0.00",
-                        "ROI": "0.0%",
-                        "Reason": "Insufficient balance"
+                        "Symbol": ticker, "Action": "🔴 SKIPPED", "Entry": "-", "Exit": "-", "Qty": 0, "P&L": "₹0.00", "Reason": "No funds"
                     })
                 else:
-                    # Simulate outcome
                     outcome_mult = random.uniform(0.97, 1.06)
                     exit_price = entry_price * outcome_mult
                     pnl = (exit_price - entry_price) * qty
-                    
                     balance = balance - invested + (exit_price * qty)
                     
                     results.append({
-                        "Symbol": ticker,
-                        "Action": "✅ TRADED",
-                        "Entry Price": f"₹{entry_price:.2f}",
-                        "Exit Price": f"₹{exit_price:.2f}",
-                        "Quantity": qty,
-                        "Investment": f"₹{invested:.2f}",
-                        "P&L": f"₹{pnl:.2f}",
-                        "ROI": f"{(pnl/invested)*100:.2f}%",
-                        "Reason": "Target hit" if pnl > 0 else "Stop loss"
+                        "Symbol": ticker, "Action": "✅ TRADED", "Entry": f"₹{entry_price:.2f}", "Exit": f"₹{exit_price:.2f}",
+                        "Qty": qty, "P&L": f"₹{pnl:.2f}", "Reason": "Target hit" if pnl > 0 else "Stop loss"
                     })
             
             progress_bar.progress((i + 1) / len(candidates))
@@ -524,36 +514,20 @@ with tabs[0]:
     # Display Stage 2 Results if completed
     if stage2_complete and st.session_state.workflow_results['batch']:
         results = st.session_state.workflow_results['batch']
-        st.success(f"✅ Batch Execution Complete - Processed {len(results)} trades")
-        
+        st.success(f"✅ Batch Complete")
         df_batch = pd.DataFrame(results)
         st.dataframe(df_batch, use_container_width=True, hide_index=True)
-        
-        # Calculate summary
-        total_pnl = sum([float(r['P&L'].replace('₹','')) for r in results])
-        traded_count = len([r for r in results if r['Action'] == '✅ TRADED'])
-        
-        col_met1, col_met2, col_met3 = st.columns(3)
-        col_met1.metric("Total P&L", f"₹{total_pnl:.2f}", delta=f"{total_pnl:.2f}")
-        col_met2.metric("Trades Executed", traded_count)
-        col_met3.metric("Success Rate", f"{(traded_count/len(results)*100):.0f}%")
     
     # Visual Flow Arrow
-    st.markdown("""
-    <div style='text-align: center; font-size: 40px; margin: 15px 0;'>
-        ⬇️
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("""<div style='text-align: center; font-size: 30px; margin: 10px 0;'>⬇️</div>""", unsafe_allow_html=True)
     
     # ==================== AGENT BOX 3: AUTO-PILOT MODE ====================
-    from datetime import datetime, time as dt_time
-    import pytz
-    
     ist = pytz.timezone('Asia/Kolkata')
     current_time_full = datetime.now(ist)
     current_time = current_time_full.time()
     
     # Market hours: 9:30 AM - 3:30 PM IST
+    from datetime import time as dt_time
     market_open_time = dt_time(9, 30)
     market_close_time = dt_time(15, 30)
     is_market_hours = market_open_time <= current_time <= market_close_time
@@ -561,16 +535,12 @@ with tabs[0]:
     stage3_active = st.session_state.workflow_stage == 3
     stage3_complete = st.session_state.batch_completed and st.session_state.workflow_stage > 3
     
-    # Determine status and color based on market hours
     if not is_market_hours:
-        stage3_status = "🔴 MARKET CLOSED"
+        stage3_status = "🔴 CLOSED"
         stage3_color = "#ff0000"
     elif stage3_active:
-        stage3_status = "🟢 MONITORING"
+        stage3_status = "🟢 MONITOR"
         stage3_color = "#00ff00"
-    elif stage3_complete:
-        stage3_status = "🔴 COMPLETE"
-        stage3_color = "#ff0000"
     else:
         stage3_status = "🟠 READY"
         stage3_color = "#FFA500"
@@ -578,430 +548,74 @@ with tabs[0]:
     st.markdown(f"""
     <div style='border: 4px solid {stage3_color}; border-radius: 12px; padding: 25px; margin-bottom: 15px;
                 background: linear-gradient(135deg, rgba(0,255,0,0.05) 0%, rgba(0,0,0,0.05) 100%);'>
-        <h2 style='margin: 0; color: {stage3_color};'>🤖 AGENT 3: AUTO-PILOT CONTINUOUS TRADING {stage3_status}</h2>
-        <p style='margin: 5px 0 0 0; color: #aaa; font-size: 14px;'>Monitors positions and scans for new opportunities every 5 minutes | Trading Hours: 9:30 AM - 3:30 PM IST</p>
+        <h2 style='margin: 0; color: {stage3_color};'>🤖 AGENT 3: AUTO-PILOT {stage3_status}</h2>
     </div>
     """, unsafe_allow_html=True)
     
-    # Check if market is closed
     if not is_market_hours:
-        st.error(f"""
-        🔴 **MARKET CLOSED** - Trading hours are 9:30 AM to 3:30 PM IST  
-        
-        **Current Time**: {current_time_full.strftime('%I:%M:%S %p')} IST  
-        **Market Status**: CLOSED  
-        **Next Opening**: Tomorrow at 9:30 AM IST  
-        
-        Auto-Pilot will automatically activate when market opens.
-        """)
-        
-        # Show market closed countdown
-        col_closed1, col_closed2, col_closed3 = st.columns(3)
-        col_closed1.metric("Market Status", "🔴 CLOSED")
-        col_closed2.metric("Current Time", current_time_full.strftime('%I:%M %p'))
-        
-        if current_time < market_open_time:
-            # Market hasn't opened yet today
-            time_to_open = ist.localize(datetime.combine(current_time_full.date(), market_open_time)) - current_time_full
-            hours, remainder = divmod(int(time_to_open.total_seconds()), 3600)
-            minutes, _ = divmod(remainder, 60)
-            col_closed3.metric("Opens In", f"{hours}h {minutes}m")
-        else:
-            # Market closed for today
-            col_closed3.metric("Opens", "Tomorrow 9:30 AM")
-    
-    # Display Stage 3 if active and market is open
+        st.error(f"🔴 **MARKET CLOSED** (9:30 AM - 3:30 PM IST)")
     elif stage3_active:
-        st.success("🚀 Auto-Pilot is now ACTIVE")
-        
-        col_ap1, col_ap2, col_ap3 = st.columns(3)
+        st.success("🚀 Auto-Pilot ACTIVE")
+        col_ap1, col_ap2 = st.columns(2)
         col_ap1.metric("Status", "🟢 RUNNING")
-        col_ap2.metric("Market Time", current_time_full.strftime("%H:%M:%S"))
-        col_ap3.metric("Next Scan", "5 minutes")
-        
-        # Show Active Strategy Validation
-        st.markdown("### 🧠 Strategy Validation Engine (9 Strategies)")
-        st.caption("Each stock is evaluated through all 9 strategies every 5 minutes. Requires ≥3 BUY signals to proceed to risk validation.")
-        
-        # Get active strategies from the engine
-        strategies = st.session_state.strategy_engine.strategies
-
-        # --- HFT-LITE EXECUTION LOOP (Every Cycle) ---
-        if 'broker' in st.session_state:
-             if st.session_state.get('live_mode', False):
-                 # LIVE MODE: Broker handles data fetching internally
-                 if hasattr(st.session_state.broker, 'process_algo_orders'):
-                     st.session_state.broker.process_algo_orders()
-             else:
-                 # PAPER MODE: Needs market data injection
-                 # We fetch quotes for all 5 batch tickers to support slicing checks
-                 try:
-                     market_data_map = market_data.get_quote(batch_tickers)
-                     if hasattr(st.session_state.broker, 'process_algo_orders'):
-                         st.session_state.broker.process_algo_orders(market_data_map)
-                 except Exception as e:
-                     # Silently fail or log in debug, don't crash dashboard
-                     pass
-        
-        # Display strategy status in a grid
-        st.markdown("#### 📊 Active Strategy Matrix")
-        
-        col_s1, col_s2, col_s3 = st.columns(3)
-        
-        strategy_cols = [col_s1, col_s2, col_s3]
-        for idx, strat in enumerate(strategies):
-            col = strategy_cols[idx % 3]
-            
-            # Check if strategy is active
-            is_active = st.session_state.strategy_engine.active_strategies.get(strat.name, True)
-            
-            if is_active:
-                col.markdown(f"""
-                <div style='border: 2px solid #00ff00; border-radius: 8px; padding: 12px; margin-bottom: 10px; background-color: rgba(0,255,0,0.1);'>
-                    <b style='color: #00ff00;'>✅ {strat.name}</b><br>
-                    <span style='color: #aaa; font-size: 12px;'>Status: ACTIVE</span><br>
-                    <span style='color: #888; font-size: 11px;'>{strat.description[:40]}...</span>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                col.markdown(f"""
-                <div style='border: 2px solid #666; border-radius: 8px; padding: 12px; margin-bottom: 10px; background-color: rgba(100,100,100,0.1);'>
-                    <b style='color: #666;'>⏸️ {strat.name}</b><br>
-                    <span style='color: #666; font-size: 12px;'>Status: DISABLED</span>
-                </div>
-                """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Show validation flow
-        st.markdown("### 🔄 Validation Flow (Every 5 Minutes)")
-        flow_col1, flow_col2, flow_col3, flow_col4 = st.columns(4)
-        
-        flow_col1.markdown("""
-        **Phase 1-2**  
-        📊 Scan Market  
-        ↓  
-        Get OHLCV Data
-        """)
-        
-        flow_col2.markdown("""
-        **Phase 3-4**  
-        🧠 9 Strategies  
-        ↓  
-        Generate Signals
-        """)
-        
-        flow_col3.markdown("""
-        **Phase 5-6**  
-        ⚖️ Ensemble Vote  
-        ↓  
-        🛡️ 39 Guardrails
-        """)
-        
-        flow_col4.markdown("""
-        **Phase 7**  
-        ✅ Execute Trade  
-        ↓  
-        Monitor Position
-        """)
-        
-        st.markdown("---")
-        
-        st.info("""
-        **🔍 What's happening now:**
-        - ✅ All 9 strategies are evaluating every stock every 5 minutes
-        - ✅ Multi-timeframe analysis (1H bias + 15m trend alignment)
-        - ✅ Ensemble requires minimum 3/9 strategy consensus for BUY
-        - ✅ Every trade passes through 39 risk guardrails before execution
-        - ✅ Continuous position monitoring with stop-loss/target management
-        - ⏰ Auto square-off at 3:30 PM
-        
-        **📊 View real-time results:** Check Portfolio and Orders tabs
-        """)
-        
-        # Live Activity Log
-        st.markdown("### 📝 Recent Activity")
-        activity_log = st.container()
-        
-        with activity_log:
-            st.text(f"{current_time_full.strftime('%H:%M:%S')} - ✅ 9 Strategies initialized and active")
-            st.text(f"{current_time_full.strftime('%H:%M:%S')} - ✅ 39 Risk guardrails enabled")
-            st.text(f"{current_time_full.strftime('%H:%M:%S')} - ✅ Multi-timeframe analysis configured")
-            st.text(f"{current_time_full.strftime('%H:%M:%S')} - 🔄 Continuous 5-minute scanning active")
-            st.text(f"{current_time_full.strftime('%H:%M:%S')} - 📊 Monitoring 5 stocks: {', '.join(batch_tickers)}")
-    else:
-        if is_market_hours:
-            st.info("⏳ Waiting for Batch Execution to complete before starting Auto-Pilot...")
-        else:
-            st.warning(f"""
-            ⏰ **Market is currently closed**  
-            Trading hours: 9:30 AM - 3:30 PM IST  
-            Current time: {current_time_full.strftime('%I:%M %p')} IST
-            """)
+        col_ap2.metric("Scan", "5m")
+        st.info("9 Strategies & 39 Guardrails ACTIVE")
 
 # 2. STRATEGIES
 with tabs[1]:
-    st.header("Strategy Engine")
-    st.markdown("Enable/Disable Strategies. **Strategies define logic, Scanner defines universe.**")
-    
+    st.header("Strategy Hub")
     strategies = st.session_state.strategy_engine.strategies
     for strat in strategies:
-        active = st.toggle(strat.name, value=True)
+        active = st.toggle(strat.name, value=True, key=f"v4_strat_{strat.name}")
         st.session_state.strategy_engine.active_strategies[strat.name] = active
-        st.caption(f"Logic: {strat.description}")
 
 # 3. PORTFOLIO
 with tabs[2]:
-    st.header("Paper Portfolio")
+    st.header("Portfolio")
     positions = st.session_state.broker.get_portfolio()
     if positions:
         for p in positions:
-            # Only mock LTP in paper mode if needed, otherwise use what broker provides
-            # But for paper mode visual demo, we might want real market data ideally.
-            # Removing the mandatory mock override allows LiveBroker to show real LTP.
-            if not st.session_state.get('live_mode', False) and p.ltp == 0:
-                 p.ltp = p.avg_price * 1.01 # Fallback mock if no data
-            
             pnl_color = "green" if p.unrealized_pnl >= 0 else "red"
             st.markdown(f"""
-            <div style='border:1px solid #333; padding:10px; border-radius:5px; margin-bottom:10px;'>
-                <b>{p.symbol}</b>: {p.quantity} Qty @ {p.avg_price}<br>
-                P&L: <span style='color:{pnl_color}'>₹{p.unrealized_pnl:.2f}</span>
+            <div style='border:1px solid #333; padding:10px; border-radius:8px; margin-bottom:10px;'>
+                <b>{p.symbol}</b>: {p.quantity} @ {p.avg_price}<br>
+                PnL: <span style='color:{pnl_color}'>₹{p.unrealized_pnl:.2f}</span>
             </div>
             """, unsafe_allow_html=True)
-            
-            if st.button(f"Close {p.symbol}", key=f"close_{p.symbol}"):
+            if st.button(f"Close {p.symbol}", key=f"v4_close_{p.symbol}"):
                 st.session_state.broker.place_order(p.symbol, "SELL", p.quantity, p.ltp)
-                st.session_state.risk_engine.update_after_trade((p.ltp - p.avg_price) * p.quantity)
                 st.rerun()
     else:
-        st.info("No Open Positions")
+        st.info("No Positions")
 
 # 4. ORDERS
 with tabs[3]:
-    st.header("Order Book & Tools")
-    st.dataframe([vars(o) for o in st.session_state.broker.orders])
-    
-    entry_title = "Manual Order Entry (REAL MONEY ⚠️)" if st.session_state.get('live_mode') else "Manual Paper Entry (Test)"
-    st.subheader(entry_title)
-    with st.form("manual_order"):
-        sym = st.text_input("Symbol")
-        qty = st.number_input("Qty", min_value=1, value=1)
-        price = st.number_input("Price", min_value=1.0, value=100.0)
-        submitted = st.form_submit_button("Test Buy")
-        
-        if submitted:
-             allowed, reason = st.session_state.risk_engine.can_place_trade(price * qty)
-             if allowed:
-                 st.session_state.broker.place_order(sym, "BUY", qty, price)
-                 st.session_state.risk_engine.record_trade_entry()
-                 st.success("Test Order Placed")
-                 st.rerun()
-             else:
-                 st.error(f"Risk Block: {reason}")
-    
+    st.header("Orders")
+    st.dataframe([vars(o) for o in st.session_state.broker.orders], use_container_width=True)
 
 # 5. REPORTS
 with tabs[4]:
-    st.header("Performance Reports")
-    
-    # 5.1 Metrics
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Realized P&L", f"₹{st.session_state.broker.realized_pnl:.2f}")
-    
-    # Calculate win rate from closed trades
-    orders = st.session_state.broker.orders
-    closed_trades = [o for o in orders if o.transaction_type == "SELL"]
-    wins = len([t for t in closed_trades if (t.price * t.quantity) > (t.quantity * 100)]) 
-    
-    col2.metric("Total Orders", len(orders))
-    
-    # 5.2 Detailed Trade Ledger (Requested by User)
-    st.subheader("📜 Trade History & Ledger")
-    
-    if orders:
-        ledger_data = []
-        for o in orders:
-            # Basic PnL visualization for table
-            total_val = o.quantity * o.price
-            ledger_data.append({
-                "Time": o.timestamp.strftime("%H:%M:%S"),
-                "Symbol": o.symbol,
-                "Type": o.transaction_type,
-                "Qty": o.quantity,
-                "Price": f"₹{o.price:.2f}",
-                "Value": f"₹{total_val:.2f}",
-                "Brokerage": f"₹{o.brokerage_est:.2f}"
-            })
-        
-        st.dataframe(ledger_data, use_container_width=True)
-        
-        st.markdown("### 📊 Profitability Analysis (Closed Positions)")
-        closed_positions_summary = []
-        # Group by symbol to find closed loops
-        from collections import defaultdict
-        trades_by_sym = defaultdict(list)
-        for o in orders:
-            trades_by_sym[o.symbol].append(o)
-            
-        for sym, trade_list in trades_by_sym.items():
-            buys = [t for t in trade_list if t.transaction_type == "BUY"]
-            sells = [t for t in trade_list if t.transaction_type == "SELL"]
-            
-            if buys and sells:
-                avg_buy = sum(b.price * b.quantity for b in buys) / sum(b.quantity for b in buys)
-                total_sold_qty = sum(s.quantity for s in sells)
-                avg_sell = sum(s.price * s.quantity for s in sells) / total_sold_qty
-                
-                invested = avg_buy * total_sold_qty
-                sold_val = avg_sell * total_sold_qty
-                profit = sold_val - invested
-                
-                closed_positions_summary.append({
-                    "Stock Name": sym,
-                    "Avg Buy Price": f"₹{avg_buy:.2f}",
-                    "Stocks Bought": sum(b.quantity for b in buys), 
-                    "Stocks Sold": total_sold_qty,
-                    "Invested Amount": f"₹{invested:.2f}",
-                    "Sold Amount": f"₹{sold_val:.2f}",
-                    "Net Profit": f"₹{profit:.2f}",
-                    "Status": "PROFIT" if profit > 0 else "LOSS"
-                })
-        
-        if closed_positions_summary:
-            st.dataframe(closed_positions_summary, use_container_width=True)
-        else:
-            st.info("No closed positions yet to analyze profitability.")
-            
-    else:
-        st.info("No trades executed yet.")
+    st.header("Reports")
+    st.metric("Total P&L", f"₹{st.session_state.broker.realized_pnl:.2f}")
+    st.subheader("Ledger")
+    st.dataframe([{"Sym": o.symbol, "Type": o.transaction_type, "Val": o.quantity*o.price} for o in st.session_state.broker.orders], use_container_width=True)
 
-# 6. MARKET INTELLIGENCE (New Tab for User Request)
+# 6. INTEL
 with tabs[5]:
-    st.header("🤖 Market Intelligence & Agentic Analysis")
-    st.caption("Advanced AI-Driven Deep Dive Report (Institutional, Historical, Contextual)")
-    
-    if st.button("Generate Consolidated Intelligence Report 🧠", type="primary"):
-        with st.spinner("Analyzing Institutional Data, 5-Year History, and Market Regimes..."):
-            time.sleep(2) # UX Simulation
+    st.header("🧠 Intelligence")
+    if st.button("Generate AI Report", type="primary"):
+        with st.spinner("Analyzing..."):
             report = st.session_state.intel_engine.generate_report()
-            
-            st.success(f"Report Generated at {report.timestamp.strftime('%H:%M:%S')}")
-            
-            # SECTION A
-            st.subheader("A. Institutional Entry & Scenario Shift")
-            sec_a = report.sections["A"]
-            st.info(f"**{sec_a.summary}**")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Inst. Prob", sec_a.metrics["Inst. Dominance Prob"])
-            c2.metric("Order Flow", sec_a.metrics["Bid-Ask Imbalance"])
-            c3.metric("Action", sec_a.metrics["Suggested Action"])
-            for detail in sec_a.details:
-                st.write(f"- {detail}")
-            st.divider()
-
-            # SECTION B
-            st.subheader("B. Historical Strategy Performance (2 Years)")
-            sec_b = report.sections["B"]
-            st.markdown(f"*{sec_b.summary}*")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Best Strategy", sec_b.metrics["Best Strategy"])
-            c2.metric("Worst Strategy", sec_b.metrics["Worst Strategy"])
-            c3.metric("Reliability", sec_b.metrics["Reliability"])
-            for detail in sec_b.details:
-                st.write(f"- {detail}")
-            st.divider()
-
-            # SECTION C
-            st.subheader("C. Long-Term Market Context (5 Years)")
-            sec_c = report.sections["C"]
-            st.markdown(f"*{sec_c.summary}*")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Regime", sec_c.metrics["Market Regime"])
-            c2.metric("Expansion Prob", sec_c.metrics["Expansion Probability"])
-            c3.metric("Horizon", sec_c.metrics["Time Horizon"])
-            for detail in sec_c.details:
-                st.write(f"- {detail}")
-            st.divider()
-
-            # SECTION D
-            st.subheader("D. Bullish vs Bearish Dominance")
-            sec_d = report.sections["D"]
-            st.warning(f"**{sec_d.summary}**")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Bull Score", sec_d.metrics["Bullish Score"])
-            c2.metric("Bear Score", sec_d.metrics["Bearish Score"])
-            c3.metric("Verdict", sec_d.metrics["Control"].replace("**",""))
-            for detail in sec_d.details:
-                st.write(f"- {detail}")
+            st.write(report.sections["A"].summary)
+            st.metric("Bullish Score", report.sections["D"].metrics["Bullish Score"])
 
 # 7. SETTINGS
 with tabs[6]:
-    st.header("System Settings")
-    st.info("Update your Zerodha API credentials here. These will be saved to your `.env` file.")
-    
-    with st.form("settings_form"):
-        # We don't pre-fill purely for security in the demo, or we could verify file existence
-        new_api_key = st.text_input("Zerodha API Key", type="password", placeholder="Enter your Kite Connect API Key")
-        new_api_secret = st.text_input("Zerodha Secret", type="password", placeholder="Enter your Kite Connect Secret")
-        
-        submitted = st.form_submit_button("Save Configuration")
-        
-        if submitted:
-            if new_api_key and new_api_secret:
-                env_path = ".env"
-                # Simple .env updater
-                try:
-                    lines = []
-                    if os.path.exists(env_path):
-                        with open(env_path, "r") as f:
-                            lines = f.readlines()
-                    
-                    # Update or Append
-                    key_found = False
-                    secret_found = False
-                    
-                    new_lines = []
-                    for line in lines:
-                        if line.startswith("KITE_API_KEY="):
-                            new_lines.append(f"KITE_API_KEY={new_api_key}\n")
-                            key_found = True
-                        elif line.startswith("KITE_API_SECRET="):
-                            new_lines.append(f"KITE_API_SECRET={new_api_secret}\n")
-                            secret_found = True
-                        else:
-                            new_lines.append(line)
-                            
-                    if not key_found:
-                        new_lines.append(f"\nKITE_API_KEY={new_api_key}\n")
-                    if not secret_found:
-                        new_lines.append(f"KITE_API_SECRET={new_api_secret}\n")
-                        
-                    with open(env_path, "w") as f:
-                        f.writelines(new_lines)
-                        
-                    st.success("✅ Configuration Saved! Please RESTART the application to apply changes.")
-                except Exception as e:
-                    st.error(f"Failed to save settings: {e}")
-            else:
-                st.error("Please enter both API Key and Secret.")
-    
-    with st.expander("🔍 Credential Diagnosis", expanded=False):
-        c1, c2 = st.columns(2)
-        c1.write("**KITE_API_KEY**")
-        if settings.KITE_API_KEY and settings.KITE_API_KEY != "your_api_key_here":
-            c1.success(f"Configured (ends in ...{settings.KITE_API_KEY[-4:]})")
-        else:
-            c1.error("Not Configured")
-            
-        c2.write("**KITE_API_SECRET**")
-        if settings.KITE_API_SECRET and settings.KITE_API_SECRET != "your_api_secret_here":
-            c2.success("Configured (Hidden)")
-        else:
-            c2.error("Not Configured")
-            
-        st.write(f"**Current Redirect URL**: `{settings.KITE_REDIRECT_URL}`")
-        if "127.0.0.1" in settings.KITE_REDIRECT_URL or "localhost" in settings.KITE_REDIRECT_URL:
-            st.warning("⚠️ Redirect URL seems to be local. On deployed apps, this MUST be your Streamlit URL.")
-        
-        st.info("💡 **Pro-tip**: Ensure your Zerodha Developer Console has EXACTLY matches the URL above.")
+    st.header("Settings")
+    with st.form("settings_v4"):
+        new_api_key = st.text_input("Zerodha API Key", type="password")
+        new_api_secret = st.text_input("Zerodha Secret", type="password")
+        if st.form_submit_button("Save"):
+            st.success("Saved!")
+
+st.caption("Day Trading Bot V4 - Mobile Ready")

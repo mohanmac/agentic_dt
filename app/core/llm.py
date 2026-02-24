@@ -15,6 +15,9 @@ from app.core.utils import logger, log_event
 class LLMProvider(ABC):
     """Abstract base class for LLM providers."""
     
+    def __init__(self):
+        self.total_tokens_used = 0
+
     @abstractmethod
     def generate(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
         """Generate text from prompt."""
@@ -30,6 +33,7 @@ class OllamaProvider(LLMProvider):
     """Client for interacting with local Ollama LLM."""
     
     def __init__(self):
+        super().__init__()
         self.base_url = settings.OLLAMA_BASE_URL
         self.model = settings.OLLAMA_MODEL
     
@@ -60,6 +64,12 @@ class OllamaProvider(LLMProvider):
             response.raise_for_status()
             
             result = response.json()
+            
+            # Extract tokens
+            prompt_tokens = result.get("prompt_eval_count", 0)
+            completion_tokens = result.get("eval_count", 0)
+            self.total_tokens_used += (prompt_tokens + completion_tokens)
+            
             return result.get("response", "").strip()
         
         except Exception as e:
@@ -86,6 +96,7 @@ class GeminiProvider(LLMProvider):
     """Client for interacting with Google Gemini."""
     
     def __init__(self):
+        super().__init__()
         self.api_key = settings.GOOGLE_API_KEY
         self.model_name = settings.GOOGLE_MODEL
         
@@ -128,6 +139,9 @@ class GeminiProvider(LLMProvider):
                 full_prompt,
                 generation_config=generation_config
             )
+            
+            if hasattr(response, "usage_metadata") and response.usage_metadata:
+                self.total_tokens_used += getattr(response.usage_metadata, "total_token_count", 0)
             
             return response.text.strip()
             
@@ -187,6 +201,12 @@ class LLMClient:
             # Failover logic could go here, but for now just return error message
             return "Analysis unavailable due to LLM error."
             
+    @property
+    def total_tokens_used(self) -> int:
+        if self.provider:
+            return self.provider.total_tokens_used
+        return 0
+
     def check_health(self) -> bool:
         if not self.provider:
             self._initialize_provider()

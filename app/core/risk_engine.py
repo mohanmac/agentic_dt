@@ -17,14 +17,14 @@ class RiskConfig:
     max_sector_exposure_percent: float = 100.0
     
     # Time-Based Guardrails
-    avoid_first_minutes: int = 0
+    avoid_first_minutes: int = 15
     avoid_last_minutes: int = 15
     min_hold_time_minutes: int = 5
     max_position_age_hours: int = 4
     
     # Drawdown & Streak Protection
     max_drawdown_percent: float = 15.0
-    max_consecutive_losses: int = 5
+    max_consecutive_losses: int = 3
     trailing_stop_activation_percent: float = 2.0
     trailing_stop_distance_percent: float = 1.0
     

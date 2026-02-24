@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     # Zerodha Kite Connect
     KITE_API_KEY: str = Field(default="your_api_key_here", description="Zerodha API Key")
     KITE_API_SECRET: str = Field(default="your_api_secret_here", description="Zerodha API Secret")
-    KITE_REDIRECT_URL: str = Field(default="http://127.0.0.1:8000/callback")
+    KITE_REDIRECT_URL: str = Field(default="https://mohanmac-agentic-dt-uidashboard-v3-w6chek.streamlit.app")
     
     # Ollama Configuration
     OLLAMA_BASE_URL: str = Field(default="http://localhost:11434")
@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
-        case_sensitive = True
+        case_sensitive = False
     
     @validator("MAX_DAILY_LOSS")
     def validate_max_loss(cls, v, values):

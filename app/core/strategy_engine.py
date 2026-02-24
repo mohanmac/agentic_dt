@@ -14,7 +14,7 @@ MULTI_TF_CONFIG = {
     "gates": {
         "require_bias_alignment": False, # Step 1: 1H Bias (Advisory now)
         "require_trend_alignment": True, # Step 2: 15m Trend
-        "min_confluence_strategies": 2,
+        "min_confluence_strategies": 3,
         "min_signal_score": 80
     }
 }
@@ -83,7 +83,7 @@ class Strategy(Protocol):
         ...
 
 # --- RISK HELPER ---
-def apply_risk_guardrails(signal: TradeSignal, ltp: float) -> TradeSignal:
+def apply_risk_guardrails(signal: TradeSignal, ltp: float, stock_data: dict = None) -> TradeSignal:
     """
     Applies the MANDATORY RISK GUARDRAILS.
     """
@@ -98,7 +98,29 @@ def apply_risk_guardrails(signal: TradeSignal, ltp: float) -> TradeSignal:
         signal.confidence = 0
         return signal
 
-    # Guardrail 3: SLIPPAGE
+    # Guardrail 2: PARABOLIC MOVE PROTECTION (Anti-FOMO)
+    # If the current price is already up > 8% from the opening range/prev high, 
+    # it's considered parabolic and high-risk for momentum.
+    prev_high = stock_data.get("opening_range_high", 0) if stock_data else 0
+    if prev_high > 0:
+        pct_from_base = (ltp / prev_high - 1) * 100
+        if pct_from_base > 8.0:
+            signal.signal_type = "WAIT"
+            signal.reason = f"ANTI-FOMO: Move is Parabolic (+{pct_from_base:.1f}%). Avoid buying the top."
+            signal.confidence = 0
+            return signal
+
+    # Guardrail 3: VOLATILITY SQUEEZE (Over-expansion)
+    bb_width = stock_data.get("bb_width", 0.04) if stock_data else 0.04
+    if bb_width > 0.15: # 15% BB Width is extreme expansion
+        # For momentum strategies, we prefer volatility, but too much is irrational chaos
+        if signal.strategy_name in ["Momentum", "Breakout", "MACrossoverTrend"]:
+            signal.signal_type = "WAIT"
+            signal.reason = f"VOLATILITY BLOCK: BB Width {bb_width*100:.1f}% is too chaotic for trend."
+            signal.confidence = 0
+            return signal
+
+    # Guardrail 4: SLIPPAGE
     slippage = ltp * SLIPPAGE_BUFFER_PCT
     adj_entry = signal.entry_price + slippage
     adj_target = signal.target - slippage
@@ -140,7 +162,7 @@ class MomentumStrategy:
         if ltp > vwap and vol_ratio > 1.2:
             sig = TradeSignal(symbol, "BUY", ltp, ltp*0.98, ltp*1.04, 1, self.name, datetime.datetime.now(), 
                              "Momentum Positive (Price > VWAP)", 85.0, ["High Vol", "Price > VWAP"])
-            return apply_risk_guardrails(sig, ltp)
+            return apply_risk_guardrails(sig, ltp, stock_data)
             
         return TradeSignal(symbol, "WAIT", 0,0,0,0, self.name, datetime.datetime.now(), 
                          "Momentum Weak", 0.0, ["Vol Low" if vol_ratio <= 1.2 else "Price < VWAP"])
@@ -161,7 +183,7 @@ class ScalpingStrategy:
         if ema9 > ema21:
              sig = TradeSignal(symbol, "BUY", ltp, ltp*0.995, ltp*1.01, 1, self.name, datetime.datetime.now(), 
                               "Scalp Buy (EMA9 > EMA21)", 90.0, ["Trend Up", "Fast EMA Leading"])
-             return apply_risk_guardrails(sig, ltp)
+             return apply_risk_guardrails(sig, ltp, stock_data)
              
         return TradeSignal(symbol, "WAIT", 0,0,0,0, self.name, datetime.datetime.now(), "No Cross", 0.0, [])
 
@@ -181,7 +203,7 @@ class VWAPPullbackStrategy:
         if 0 < dist < 0.005:
             sig = TradeSignal(symbol, "BUY", ltp, vwap*0.99, ltp*1.03, 1, self.name, datetime.datetime.now(), 
                              "VWAP Support Bounce", 80.0, ["Near VWAP", "Uptrend"])
-            return apply_risk_guardrails(sig, ltp)
+            return apply_risk_guardrails(sig, ltp, stock_data)
             
         return TradeSignal(symbol, "WAIT", 0,0,0,0, self.name, datetime.datetime.now(), "Too far from VWAP", 0.0, [])
 
@@ -199,7 +221,7 @@ class BreakoutStrategy:
         if ltp > res_level:
             sig = TradeSignal(symbol, "BUY", ltp, res_level*0.98, ltp*1.05, 1, self.name, datetime.datetime.now(), 
                              "Range Breakout", 75.0, ["Above Res", "Vol Exp"])
-            return apply_risk_guardrails(sig, ltp)
+            return apply_risk_guardrails(sig, ltp, stock_data)
             
         return TradeSignal(symbol, "WAIT", 0,0,0,0, self.name, datetime.datetime.now(), "Below Res", 0.0, [])
 
@@ -217,7 +239,7 @@ class MeanReversionStrategy:
         if ltp < bb_lower:
             sig = TradeSignal(symbol, "BUY", ltp, ltp*0.98, ltp*1.03, 1, self.name, datetime.datetime.now(), 
                              "Oversold BB Reversion", 70.0, ["Price < LowBB"])
-            return apply_risk_guardrails(sig, ltp)
+            return apply_risk_guardrails(sig, ltp, stock_data)
             
         return TradeSignal(symbol, "WAIT", 0,0,0,0, self.name, datetime.datetime.now(), "Inside Bands", 0.0, [])
 
@@ -235,7 +257,7 @@ class RSIReversalStrategy:
         if rsi < 35:
              sig = TradeSignal(symbol, "BUY", ltp, ltp*0.98, ltp*1.04, 1, self.name, datetime.datetime.now(), 
                               "RSI Oversold Bounce", 65.0, ["RSI < 35"])
-             return apply_risk_guardrails(sig, ltp)
+             return apply_risk_guardrails(sig, ltp, stock_data)
              
         return TradeSignal(symbol, "WAIT", 0,0,0,0, self.name, datetime.datetime.now(), "RSI Neutral", 0.0, [])
 
@@ -254,7 +276,7 @@ class MACrossoverTrendStrategy:
         if ema_f > ema_s:
             sig = TradeSignal(symbol, "BUY", ltp, ltp*0.96, ltp*1.10, 1, self.name, datetime.datetime.now(), 
                              "Trend Following", 88.0, ["Golden Cross"])
-            return apply_risk_guardrails(sig, ltp)
+            return apply_risk_guardrails(sig, ltp, stock_data)
         return TradeSignal(symbol, "WAIT", 0,0,0,0, self.name, datetime.datetime.now(), "No Trend", 0.0, [])
 
 # 8. Institutional Flow - NEW STRATEGY
@@ -321,7 +343,7 @@ class InstitutionalFlowStrategy:
                 sig.risk_notes = []
             sig.risk_notes.append("Wider stop (3.5%) for stop-hunt protection")
             sig.risk_notes.append("Target: 8% (trending move)")
-            return apply_risk_guardrails(sig, ltp)
+            return apply_risk_guardrails(sig, ltp, stock_data)
         
         # Provide specific reason for WAIT
         reasons = []
@@ -415,7 +437,7 @@ class StopHuntProtectionStrategy:
                 sig.risk_notes = []
             sig.risk_notes.append("Wide stop (4%) prevents stop-hunt")
             sig.risk_notes.append("Breakout confirmation reduces false signal risk")
-            return apply_risk_guardrails(sig, ltp)
+            return apply_risk_guardrails(sig, ltp, stock_data)
         
         # Provide reason for waiting
         reasons = []
@@ -471,7 +493,7 @@ class StatisticalArbitrageStrategy:
                 sig.stop_loss = ltp * 0.98
                 sig.target = ltp * 1.04
                 sig.quantity = 1
-                return apply_risk_guardrails(sig, ltp)
+                return apply_risk_guardrails(sig, ltp, stock_data)
 
         return sig
 
@@ -599,56 +621,48 @@ class StrategyEngine:
              else:
                  detected_regime = "SIDEWAYS"
              
-        # Filter strategies based on detected regime
-        # If SIDEWAYS, we might default to BEAR (Safety) or VOLATILE (Scalping) depending on preference.
-        # Let's map SIDEWAYS to BEAR/Safety for now.
-        target_regime_types = [detected_regime]
-        if detected_regime == "SIDEWAYS":
-            target_regime_types = ["BEAR", "VOLATILE"] # Allow defensive + scalping
-            
-        active_strategy_subset = [
-            s for s in self.strategies 
-            if s.regime_type in target_regime_types
-        ]
-        
-        # Run Strategies (ONLY the subset)
-        eligible_strategies = []
+        # ── Regime-aware Strategy Selection & Weighting ──────────────────
+        regime_affinity = {
+            "BULL":     ["Momentum", "Breakout", "InstitutionalFlow", "VWAPPullback", "MACrossoverTrend"],
+            "BEAR":     ["MeanReversion", "RSIReversal", "StopHuntProtection", "Scalping"],
+            "VOLATILE": ["Scalping", "StatisticalArbitrage", "StopHuntProtection", "RSIReversal", "MeanReversion"],
+            "SIDEWAYS": ["Scalping", "StatisticalArbitrage", "MeanReversion", "RSIReversal"]
+        }
+        affinity_list = regime_affinity.get(detected_regime, [])
+
         strategy_breakdown = []
+        agreeing_count     = 0
+        weighted_conf_sum  = 0.0
+        total_weight       = 0.0
         
-        total_weight = 0.0
-        weighted_conf_sum = 0.0
-        agreeing_count = 0
-        
-        for strat in active_strategy_subset: # CHANGED from self.strategies
-            # Check regime fit (Regime is roughly derived from 15m trend + volatility)
-            # using 'trend_15m' as a proxy for regime
-            regime = "TRENDING" if trend_15m != "SIDEWAYS" else "RANGING"
-            if bias_1h == "SIDEWAYS": regime = "RANGING"
-            
-            # Simple eligibility
-            if regime in strat.valid_regimes:
-                sig = strat.analyze(stock_data) # 5m execution analysis
+        for strat in self.strategies:
+            # Check if enabled by AdaptiveOptimizer
+            if self.active_strategies.get(strat.name, True):
+                sig = strat.analyze(stock_data)
                 
+                # Base weight 1.0, Boost if strategy fits current regime
+                strat_weight = 1.5 if strat.name in affinity_list else 1.0
+                
+                # Apply forced wait if gates (1H bias / 15m trend) are closed
                 final_action = sig.signal_type
-                
-                # Apply forced wait if gates closed
                 if forced_wait and final_action == "BUY":
                     final_action = "WAIT"
                     sig.reason = f"GATED: {risk_warnings[-1]}"
                     sig.confidence = 0
                 
                 strategy_breakdown.append({
-                    "name": strat.name,
-                    "action": final_action,
-                    "confidence": sig.confidence,
-                    "reason": sig.reason,
-                    "risk_notes": sig.risk_notes # Carry over risk notes
+                    "name":       strat.name,
+                    "signal":     final_action,
+                    "conf":       sig.confidence,
+                    "weight":     strat_weight,
+                    "reason":     sig.reason,
+                    "risk_notes": sig.risk_notes
                 })
                 
                 if final_action == "BUY":
-                    weighted_conf_sum += sig.confidence
-                    total_weight += 1
-                    agreeing_count += 1
+                    weighted_conf_sum += (sig.confidence * strat_weight)
+                    total_weight      += strat_weight
+                    agreeing_count    += 1
                     
         final_conf = (weighted_conf_sum / total_weight) if total_weight > 0 else 0.0
         
