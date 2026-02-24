@@ -8,12 +8,12 @@
     "description": "Premium AI-Powered Day Trading Bot for Indian Markets",
     "icons": [
         {
-            "src": "trading_bot_app_icon.png",
+            "src": "https://raw.githubusercontent.com/mohanmac/agentic_dt/main/trading_bot_app_icon.png",
             "sizes": "192x192",
             "type": "image/png"
         },
         {
-            "src": "trading_bot_app_icon.png",
+            "src": "https://raw.githubusercontent.com/mohanmac/agentic_dt/main/trading_bot_app_icon.png",
             "sizes": "512x512",
             "type": "image/png"
         }
