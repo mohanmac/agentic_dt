@@ -10,6 +10,6 @@ sys.path.append(str(Path(__file__).parent))
 # Usually, mobile users have narrower screen widths on initial load
 # But for Streamlit, we can offer a choice or just keep V4 as the default for mobile deployment
 # For now, let's keep it clean: 
-# Point to V3 for general use, but users can specifically deploy V4.
+# Point to V4 for mobile-optimized deployment on Streamlit Cloud.
 
-import ui.dashboard_v3
+import ui.dashboard_v4
