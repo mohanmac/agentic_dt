@@ -4,6 +4,7 @@ import pandas as pd
 import os
 from datetime import datetime, timedelta
 import pytz
+from datetime import date
 
 # Path setup to include 'app' module
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -31,7 +32,7 @@ from app.core.intelligence_engine import IntelligenceEngine
 
 # --- Page Config ---
 st.set_page_config(
-    page_title="Emerging Stocks Bot V3",
+    page_title="Momentum/Trend Trading Bot V3",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -58,7 +59,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- Sidebar Auth & Info ---
-st.sidebar.title("🚀 Day Trading Bot V3")
+st.sidebar.title("🚀 Momentum/Trend Bot V3")
 
 if 'auth_status' not in st.session_state:
     # FORCE LOGIN ON NEW SESSION (Do not auto-load from file)
@@ -257,8 +258,8 @@ else:
             st.text(f"28. Max Price Deviation: {cfg.max_price_deviation_percent:.1f}%")
             
             st.markdown("##### 🧠 Strategy Requirements")
-            st.text("29. Min Confluence: 3 strategies")
-            st.text("30. Min Signal Score: 80 pts")
+            st.text("29. Min Confluence: 2 strategies (Momentum/Trend)")
+            st.text("30. Min Signal Score: 70 pts")
             st.text("31. Switch Cooldown: 20 min")
             st.text("32. Min Improvement: 15%")
             
@@ -282,7 +283,7 @@ else:
         
         # Adjustable limits
         new_max_loss = st.number_input("Max Daily Loss (₹)", value=st.session_state.risk_engine.config.max_loss_per_day, step=100.0)
-        new_max_trades = st.number_input("Max Trades/Day", value=st.session_state.risk_engine.config.max_trades_per_day, step=1)
+        new_max_trades = st.slider("Max Trades/Day", min_value=5, max_value=25, value=st.session_state.risk_engine.config.max_trades_per_day, step=1)
         
         # Update config directly
         st.session_state.risk_engine.config.max_loss_per_day = new_max_loss
@@ -318,8 +319,8 @@ tabs = st.tabs(["🤖 Automated Workflow", "🧠 Strategies", "📂 Portfolio", 
 
 # 1. AUTOMATED WORKFLOW - THREE AGENT BOXES
 with tabs[0]:
-    st.title("🚀 Intelligent Trading Workflow")
-    st.caption("Automated 3-stage agent pipeline: Market Analysis → Batch Trading → Continuous Monitoring")
+    st.title("🚀 Momentum/Trend Trading Workflow")
+    st.caption("Momentum/Trend-focused 3-stage agent pipeline: Market Analysis → Batch Trading → Continuous Monitoring (5-25 trades/day)")
     st.markdown("---")
     
     # START/STOP/RESET Buttons
@@ -373,7 +374,7 @@ with tabs[0]:
     st.markdown(f"""
     <div style='border: 4px solid {stage1_color}; border-radius: 12px; padding: 25px; margin-bottom: 15px; 
                 background: linear-gradient(135deg, rgba(0,255,0,0.05) 0%, rgba(0,0,0,0.05) 100%);'>
-        <h2 style='margin: 0; color: {stage1_color};'>🔍 AGENT 1: MIDCAP ETF + STOCK SCANNER {stage1_status}</h2>
+        <h2 style='margin: 0; color: {stage1_color};'>🔍 AGENT 1: MOMENTUM/TREND SCANNER {stage1_status}</h2>
         <p style='margin: 5px 0 0 0; color: #aaa; font-size: 14px;'>Analyzes 3 Midcap ETFs & 2 Top Midcap Stocks for best opportunities</p>
     </div>
     """, unsafe_allow_html=True)
@@ -549,19 +550,53 @@ with tabs[0]:
     from datetime import datetime, time as dt_time
     import pytz
     
+    # Session timing and holiday handling
     ist = pytz.timezone('Asia/Kolkata')
     current_time_full = datetime.now(ist)
     current_time = current_time_full.time()
+    today_date = current_time_full.date()
     
-    # Market hours: 9:30 AM - 3:30 PM IST
-    market_open_time = dt_time(9, 30)
-    market_close_time = dt_time(15, 30)
-    is_market_hours = market_open_time <= current_time <= market_close_time
+    # Define market sessions (IST)
+    pre_open_start = dt_time(9, 0)
+    pre_open_end = dt_time(9, 15)
+    regular_start = dt_time(9, 15)
+    regular_end = dt_time(15, 30)
+    closing_start = dt_time(15, 30)
+    closing_end = dt_time(15, 40)
+    post_close_end = dt_time(16, 0)
+    
+    # Upcoming market holidays for 2026
+    HOLIDAYS_2026 = [
+        date(2026, 3, 26),  # Shri Ram Navami
+        date(2026, 3, 31),  # Shri Mahavir Jayanti
+        date(2026, 4, 3),   # Good Friday
+        date(2026, 4, 14),  # Dr. Baba Saheb Ambedkar Jayanti
+        date(2026, 5, 1),   # Maharashtra Day
+        date(2026, 5, 28),  # Bakri Id
+    ]
+    
+    def get_market_session(now_time: dt_time) -> str:
+        if pre_open_start <= now_time < pre_open_end:
+            return "pre_open"
+        if regular_start <= now_time < regular_end:
+            return "regular"
+        if closing_start <= now_time < closing_end:
+            return "closing"
+        if closing_end <= now_time < post_close_end:
+            return "post_close"
+        return "closed"
+    
+    def is_holiday(d: date) -> bool:
+        # Weekends (Saturday=5, Sunday=6) are also treated as holidays
+        return d.weekday() >= 5 or d in HOLIDAYS_2026
+    
+    session_name = get_market_session(current_time)
+    is_market_hours = session_name == "regular" and not is_holiday(today_date)
     
     stage3_active = st.session_state.workflow_stage == 3
     stage3_complete = st.session_state.batch_completed and st.session_state.workflow_stage > 3
     
-    # Determine status and color based on market hours
+    # Determine status and color based on session
     if not is_market_hours:
         stage3_status = "🔴 MARKET CLOSED"
         stage3_color = "#ff0000"
@@ -600,9 +635,9 @@ with tabs[0]:
         col_closed1.metric("Market Status", "🔴 CLOSED")
         col_closed2.metric("Current Time", current_time_full.strftime('%I:%M %p'))
         
-        if current_time < market_open_time:
+        if current_time < regular_start:
             # Market hasn't opened yet today
-            time_to_open = ist.localize(datetime.combine(current_time_full.date(), market_open_time)) - current_time_full
+            time_to_open = ist.localize(datetime.combine(current_time_full.date(), regular_start)) - current_time_full
             hours, remainder = divmod(int(time_to_open.total_seconds()), 3600)
             minutes, _ = divmod(remainder, 60)
             col_closed3.metric("Opens In", f"{hours}h {minutes}m")

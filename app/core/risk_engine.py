@@ -8,7 +8,7 @@ class RiskConfig:
     max_loss_per_day: float = 300.0
     per_trade_max_loss_absolute: float = 500.0
     min_capital_threshold: float = 600.0
-    max_trades_per_day: int = 10
+    max_trades_per_day: int = 25
     max_open_positions: int = 2
     
     # Position & Exposure Limits

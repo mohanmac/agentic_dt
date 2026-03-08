@@ -14,8 +14,8 @@ MULTI_TF_CONFIG = {
     "gates": {
         "require_bias_alignment": False, # Step 1: 1H Bias (Advisory now)
         "require_trend_alignment": True, # Step 2: 15m Trend
-        "min_confluence_strategies": 3,
-        "min_signal_score": 80
+        "min_confluence_strategies": 2,   # Lowered: Momentum/Trend focus needs fewer confirmations
+        "min_signal_score": 70            # Lowered: More aggressive entry for trend-following
     }
 }
 
@@ -622,10 +622,12 @@ class StrategyEngine:
                  detected_regime = "SIDEWAYS"
              
         # ── Regime-aware Strategy Selection & Weighting ──────────────────
+        # MOMENTUM/TREND FOCUS: Higher weights for trend-following strategies
+        momentum_trend_strategies = ["Momentum", "Breakout", "MACrossoverTrend", "InstitutionalFlow", "VWAPPullback"]
         regime_affinity = {
             "BULL":     ["Momentum", "Breakout", "InstitutionalFlow", "VWAPPullback", "MACrossoverTrend"],
             "BEAR":     ["MeanReversion", "RSIReversal", "StopHuntProtection", "Scalping"],
-            "VOLATILE": ["Scalping", "StatisticalArbitrage", "StopHuntProtection", "RSIReversal", "MeanReversion"],
+            "VOLATILE": ["Momentum", "Scalping", "StopHuntProtection", "Breakout", "RSIReversal"],
             "SIDEWAYS": ["Scalping", "StatisticalArbitrage", "MeanReversion", "RSIReversal"]
         }
         affinity_list = regime_affinity.get(detected_regime, [])
@@ -640,8 +642,12 @@ class StrategyEngine:
             if self.active_strategies.get(strat.name, True):
                 sig = strat.analyze(stock_data)
                 
-                # Base weight 1.0, Boost if strategy fits current regime
-                strat_weight = 1.5 if strat.name in affinity_list else 1.0
+                # Base weight 1.0, Boost for momentum/trend strategies and regime fit
+                strat_weight = 1.0
+                if strat.name in momentum_trend_strategies:
+                    strat_weight = 2.0  # Strong boost for momentum/trend
+                elif strat.name in affinity_list:
+                    strat_weight = 1.5  # Moderate boost for regime-fit
                 
                 # Apply forced wait if gates (1H bias / 15m trend) are closed
                 final_action = sig.signal_type
