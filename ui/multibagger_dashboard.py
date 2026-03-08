@@ -13,7 +13,7 @@ from datetime import datetime
 # Page config
 st.set_page_config(
     page_title="Multi-Bagger Analysis Dashboard",
-    page_icon="🚀",
+    page_icon="https://raw.githubusercontent.com/mohanmac/agentic_dt/main/favicon_512.png",
     layout="wide"
 )
 
