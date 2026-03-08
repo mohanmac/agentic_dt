@@ -21,6 +21,11 @@
             "src": "https://raw.githubusercontent.com/mohanmac/agentic_dt/main/favicon_512.png",
             "type": "image/png",
             "sizes": "512x512"
+        },
+        {
+            "src": "favicon_512.png",
+            "type": "image/png",
+            "sizes": "512x512"
         }
     ]
 }
