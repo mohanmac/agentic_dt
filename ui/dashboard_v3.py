@@ -34,7 +34,8 @@ from app.core.intelligence_engine import IntelligenceEngine
 st.set_page_config(
     page_title="Momentum/Trend Trading Bot V3",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    page_icon="https://raw.githubusercontent.com/mohanmac/agentic_dt/main/favicon_512.png",
 )
 
 if 'broker' not in st.session_state:
