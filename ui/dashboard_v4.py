@@ -33,7 +33,7 @@ st.set_page_config(
     page_title="Momentum/Trend Bot V4 (Mobile)",
     layout="wide",
     initial_sidebar_state="collapsed",
-    page_icon="https://raw.githubusercontent.com/mohanmac/agentic_dt/main/favicon_512.png",
+    page_icon="favicon_512.png",
 )
 
 if 'broker' not in st.session_state:
