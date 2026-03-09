@@ -93,6 +93,22 @@ class PaperBroker:
         executed_price = price * (1 + slippage_pct) if transaction_type == "BUY" else price * (1 - slippage_pct)
         executed_price = round(executed_price, 2)
 
+        # 1.5 Prevent Selling at a loss (User Requirement)
+        if transaction_type == "SELL":
+            pos = self.positions.get(symbol)
+            if pos and pos.quantity > 0 and pos.avg_price > 0:
+                if executed_price < pos.avg_price:
+                    return PaperOrder(
+                        order_id=str(uuid.uuid4())[:8],
+                        symbol=symbol,
+                        transaction_type=transaction_type,
+                        quantity=quantity,
+                        price=price,
+                        status="REJECTED: Sell price below average buy price",
+                        timestamp=datetime.datetime.now(),
+                        brokerage_est=0.0
+                    )
+
         # 2. Brokerage (Simplified Zerodha: 0.03% or Rs 20 whichever is lower for intraday)
         turnover = executed_price * quantity
         brokerage = min(20.0, turnover * 0.0003)

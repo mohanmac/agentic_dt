@@ -691,8 +691,8 @@ class MarketDataProvider:
 
                     # Pick a primary driver for the headline
                     primary_strat = "Momentum"
-                    # Run ACTUAL Backtest using the New 4-Layer Engine
-                    bt_result = engine.run_backtest(primary_strat, symbol, days=30)
+                    # Run ACTUAL Backtest using the New 4-Layer Engine (5 Years / 1825 days)
+                    bt_result = engine.run_backtest(primary_strat, symbol, days=1825)
                     
                     candidates.append({
                         "symbol": symbol,
@@ -746,9 +746,8 @@ class MarketDataProvider:
                     "RSIReversal": {"signal": "BUY", "confidence": "75%", "detail": "RSI crossed above 50 midline"},
                     "MACrossoverTrend": {"signal": "BUY", "confidence": "90%", "detail": "Golden Cross on 1hr chart"}
                 }
-                
-                # Demo Backtest
-                bt_result = engine.run_backtest("Momentum", demo_symbol, days=30)
+                # Demo Backtest (5 Years / 1825 days)
+                bt_result = engine.run_backtest("Momentum", demo_symbol, days=1825)
                 
                 candidates.append({
                     "symbol": demo_symbol,

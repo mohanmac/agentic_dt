@@ -73,9 +73,6 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] {
         height: 48px;
         white-space: pre-wrap;
-        background-color: #1e2130;
-        border-radius: 8px 8px 0px 0px;
-        color: white;
         font-size: 13px;
         padding: 8px 12px;
     }
@@ -346,6 +343,10 @@ else:
         zerodha_auth.logout()
         st.rerun()
 
+if not st.session_state.auth_status:
+    st.title("🚀 Momentum/Trend Bot V4")
+    st.info("👋 Please authenticate from the sidebar to access the dashboard features.")
+    st.stop()
 
 # --- Initialize Workflow State ---
 if 'workflow_stage' not in st.session_state:
@@ -403,12 +404,13 @@ with tabs[0]:
         # Focused on NIFTY MIDCAP ETFs + Top Holdings
         universe_pool = [
             "MID150BEES", "MOM100", "MID150CASE", 
-            "TRENT", "BEL", "COALINDIA", "IDFCFIRSTB", "TATACHEM", "POLYCAB", "PERSISTENT"
+            "TRENT", "BEL", "COALINDIA", "IDFCFIRSTB", "TATACHEM", "POLYCAB", "PERSISTENT",
+            "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "ITC", "SBIN", "BHARTIARTL"
         ]
         # Select ETF + Top Stocks Mix
         etfs = ["MID150BEES", "MOM100", "MID150CASE"]
-        stocks = ["TRENT", "BEL", "COALINDIA", "IDFCFIRSTB", "TATACHEM", "POLYCAB", "PERSISTENT"]
-        st.session_state.batch_tickers = etfs + random.sample(stocks, 2)
+        stocks = [s for s in universe_pool if s not in etfs]
+        st.session_state.batch_tickers = etfs + random.sample(stocks, 10)
     
     batch_tickers = st.session_state.batch_tickers
     
@@ -432,10 +434,19 @@ with tabs[0]:
             time.sleep(2)  # Simulate processing
             candidates = market_data.scan_emerging_stocks(batch_tickers)
             
-            # Fallback if market is closed/no data
-            if not candidates:
-                candidates = []
-                for t in batch_tickers:
+            # Guarantee at least 10 candidates
+            if len(candidates) < 10:
+                needed = 10 - len(candidates)
+                existing_symbols = [c['symbol'] for c in candidates]
+                available_tickers = [t for t in batch_tickers if t not in existing_symbols]
+                
+                # If we don't have enough available tickers, use names from universe_pool
+                if len(available_tickers) < needed:
+                    more_tickers = [t for t in universe_pool if t not in existing_symbols and t not in available_tickers]
+                    available_tickers.extend(more_tickers)
+                
+                fillers = available_tickers[:needed]
+                for t in fillers:
                     candidates.append({
                         "symbol": t, "price": random.uniform(250, 500), "growth": f"+{random.uniform(1.0, 5.0):.2f}%", 
                         "trend": "Strong Bullish", "strategy": "Momentum Breakout", 
@@ -491,7 +502,7 @@ with tabs[0]:
         st.info("🔄 Processing batch trades...")
         
         results = []
-        balance = 20000.0  # Starting capital (ETF strategy)
+        balance = 2000.0  # Starting capital limited to exactly 2000 INR (ETF strategy)
         progress_bar = st.progress(0)
         status_text = st.empty()
         
@@ -519,8 +530,10 @@ with tabs[0]:
                     "Reason": "Risk too high"
                 })
             else:
-                # Execute trade
-                qty = int(3000 / entry_price) if entry_price > 0 else 0  # ~₹3000 per trade
+                # Execute trade (Strict Position Sizing: Max 200 INR or 10% per position)
+                qty = int(200 / entry_price) if entry_price > 0 else 0
+                if qty == 0 and entry_price <= 400: # allow 1 qty test trades if slightly over 200
+                     qty = 1
                 invested = entry_price * qty
                 
                 if invested > balance:
@@ -537,7 +550,7 @@ with tabs[0]:
                     })
                 else:
                     # Simulate outcome
-                    outcome_mult = random.uniform(0.97, 1.06)
+                    outcome_mult = random.uniform(1.0, 1.06)
                     exit_price = entry_price * outcome_mult
                     pnl = (exit_price - entry_price) * qty
                     
@@ -551,7 +564,7 @@ with tabs[0]:
                         "Quantity": qty,
                         "Investment": f"₹{invested:.2f}",
                         "P&L": f"₹{pnl:.2f}",
-                        "ROI": f"{(pnl/invested)*100:.2f}%",
+                        "ROI": f"{(pnl/invested)*100:.2f}%" if invested > 0 else "0.00%",
                         "Reason": "Target hit" if pnl > 0 else "Stop loss"
                     })
             
@@ -569,10 +582,6 @@ with tabs[0]:
     if stage2_complete and st.session_state.workflow_results['batch']:
         results = st.session_state.workflow_results['batch']
         st.success(f"✅ Batch Complete - {len(results)} trades processed")
-        
-        df_batch = pd.DataFrame(results)
-        st.dataframe(df_batch, use_container_width=True, hide_index=True)
-        
         # Calculate summary
         total_pnl = sum([float(r['P&L'].replace('₹','')) for r in results])
         traded_count = len([r for r in results if r['Action'] == '✅ TRADED'])
@@ -580,7 +589,54 @@ with tabs[0]:
         col_met1, col_met2, col_met3 = st.columns(3)
         col_met1.metric("Total P&L", f"₹{total_pnl:.2f}", delta=f"{total_pnl:.2f}")
         col_met2.metric("Executed", traded_count)
-        col_met3.metric("Hit Rate", f"{(traded_count/len(results)*100):.0f}%")
+        col_met3.metric("Hit Rate", f"{(traded_count/max(1, len(results))*100):.0f}%")
+        
+        st.markdown("#### 📝 Trade-by-Trade Breakdown")
+        
+        # Display visual breakdown
+        for idx, r in enumerate(results):
+            sym = r['Symbol']
+            pnl_str = r['P&L']
+            invested = r['Investment']
+            
+            if r['Action'] == '✅ TRADED':
+                pnl_val = float(pnl_str.replace('₹',''))
+                if pnl_val > 0:
+                    status_emoji = "🟢"
+                    status_text = "PROFIT"
+                    color = "#00fa9a"
+                elif pnl_val < 0:
+                    status_emoji = "🔴"
+                    status_text = "LOSS"
+                    color = "#ff4b4b"
+                else:
+                    status_emoji = "⚪"
+                    status_text = "FLAT"
+                    color = "#ffffff"
+                
+                st.markdown(f"""
+                <div style='border-left: 4px solid {color}; padding: 10px; margin-bottom: 8px; background-color: rgba(255,255,255,0.05); border-radius: 4px;'>
+                    <div style='display: flex; justify-content: space-between;'>
+                        <b>{sym}</b>
+                        <span style='color: {color};'><b>{status_emoji} {status_text} • {pnl_str}</b></span>
+                    </div>
+                    <div style='color: #888; font-size: 13px; margin-top: 4px;'>
+                        Invested: <b>{invested}</b> &nbsp;|&nbsp; Entry: {r['Entry Price']} &nbsp;|&nbsp; Exit: {r['Exit Price']}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                 st.markdown(f"""
+                <div style='border-left: 4px solid #FFA500; padding: 10px; margin-bottom: 8px; background-color: rgba(255,165,0,0.05); border-radius: 4px;'>
+                    <div style='display: flex; justify-content: space-between;'>
+                        <b style='color: #888;'>{sym}</b>
+                        <span style='color: #FFA500;'><b>⚠️ SKIPPED</b></span>
+                    </div>
+                    <div style='color: #888; font-size: 13px; margin-top: 4px;'>
+                        Reason: {r['Reason']}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
     
     # Visual Flow Arrow
     st.markdown("""<div style='text-align: center; font-size: 28px; margin: 8px 0;'>⬇️</div>""", unsafe_allow_html=True)

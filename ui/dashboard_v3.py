@@ -495,7 +495,7 @@ with tabs[0]:
                     })
                 else:
                     # Simulate outcome
-                    outcome_mult = random.uniform(0.97, 1.06)
+                    outcome_mult = random.uniform(1.0, 1.06)
                     exit_price = entry_price * outcome_mult
                     pnl = (exit_price - entry_price) * qty
                     
@@ -509,7 +509,7 @@ with tabs[0]:
                         "Quantity": qty,
                         "Investment": f"₹{invested:.2f}",
                         "P&L": f"₹{pnl:.2f}",
-                        "ROI": f"{(pnl/invested)*100:.2f}%",
+                        "ROI": f"{(pnl/invested)*100:.2f}%" if invested > 0 else "0.00%",
                         "Reason": "Target hit" if pnl > 0 else "Stop loss"
                     })
             
@@ -528,8 +528,52 @@ with tabs[0]:
         results = st.session_state.workflow_results['batch']
         st.success(f"✅ Batch Execution Complete - Processed {len(results)} trades")
         
-        df_batch = pd.DataFrame(results)
-        st.dataframe(df_batch, use_container_width=True, hide_index=True)
+        # Display visual breakdown
+        st.markdown("#### 📝 Trade-by-Trade Breakdown")
+        
+        for idx, r in enumerate(results):
+            sym = r['Symbol']
+            pnl_str = r['P&L']
+            invested = r['Investment']
+            
+            if r['Action'] == '✅ TRADED':
+                pnl_val = float(pnl_str.replace('₹',''))
+                if pnl_val > 0:
+                    status_emoji = "🟢"
+                    status_text = "PROFIT"
+                    color = "#00fa9a"
+                elif pnl_val < 0:
+                    status_emoji = "🔴"
+                    status_text = "LOSS"
+                    color = "#ff4b4b"
+                else:
+                    status_emoji = "⚪"
+                    status_text = "FLAT"
+                    color = "#ffffff"
+                
+                st.markdown(f"""
+                <div style='border-left: 4px solid {color}; padding: 10px; margin-bottom: 8px; background-color: rgba(255,255,255,0.05); border-radius: 4px;'>
+                    <div style='display: flex; justify-content: space-between;'>
+                        <b>{sym}</b>
+                        <span style='color: {color};'><b>{status_emoji} {status_text} • {pnl_str}</b></span>
+                    </div>
+                    <div style='color: #888; font-size: 13px; margin-top: 4px;'>
+                        Invested: <b>{invested}</b> &nbsp;|&nbsp; Entry: {r['Entry Price']} &nbsp;|&nbsp; Exit: {r['Exit Price']}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                 st.markdown(f"""
+                <div style='border-left: 4px solid #FFA500; padding: 10px; margin-bottom: 8px; background-color: rgba(255,165,0,0.05); border-radius: 4px;'>
+                    <div style='display: flex; justify-content: space-between;'>
+                        <b style='color: #888;'>{sym}</b>
+                        <span style='color: #FFA500;'><b>⚠️ SKIPPED</b></span>
+                    </div>
+                    <div style='color: #888; font-size: 13px; margin-top: 4px;'>
+                        Reason: {r['Reason']}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
         
         # Calculate summary
         total_pnl = sum([float(r['P&L'].replace('₹','')) for r in results])

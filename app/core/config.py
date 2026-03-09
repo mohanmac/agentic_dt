@@ -30,10 +30,10 @@ class Settings(BaseSettings):
     
     # Trading Configuration
     DAILY_CAPITAL: float = Field(default=2000.0, description="Daily trading capital in INR")
-    MAX_DAILY_LOSS: float = Field(default=300.0, description="Maximum daily loss in INR")
-    MAX_TRADES_PER_DAY: int = Field(default=5, description="Maximum number of trades per day")
+    MAX_DAILY_LOSS: float = Field(default=200.0, description="Maximum daily loss in INR")
+    MAX_TRADES_PER_DAY: int = Field(default=20, description="Maximum number of trades per day")
     PER_TRADE_MAX_LOSS_PERCENT: float = Field(default=50.0, description="Max % of remaining loss budget per trade")
-    PER_TRADE_MAX_LOSS_ABSOLUTE: float = Field(default=500.0, description="Absolute max loss per trade in INR")
+    PER_TRADE_MAX_LOSS_ABSOLUTE: float = Field(default=100.0, description="Absolute max loss per trade in INR")
     MIN_CAPITAL_THRESHOLD: float = Field(default=600.0, description="Stop trading if capital drops below this")
     
     # Trading Hours (IST)
@@ -98,7 +98,7 @@ class Settings(BaseSettings):
     
     # Trading Parameters
     TRADING_SYMBOLS: str = Field(default="HINDCOPPER,MCX,LAURUSLABS,NAVINFLUOR,RADICO")
-    MAX_TRADES_PER_DAY: int = Field(default=5)
+    MAX_TRADES_PER_DAY: int = Field(default=20)
     
     class Config:
         env_file = ".env"

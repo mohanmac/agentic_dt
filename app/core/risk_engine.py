@@ -4,17 +4,17 @@ from typing import List, Optional
 
 @dataclass
 class RiskConfig:
-    max_capital_per_trade: float = 2000.0
-    max_loss_per_day: float = 300.0
-    per_trade_max_loss_absolute: float = 500.0
-    min_capital_threshold: float = 600.0
-    max_trades_per_day: int = 25
+    max_capital_per_trade: float = 200.0  # POSITION SIZING: Never risk >10% of 2000 total capital on one asset
+    max_loss_per_day: float = 200.0       
+    per_trade_max_loss_absolute: float = 50.0 # Trade Risk-Defined Strategies: Strict loss cutoff
+    min_capital_threshold: float = 1000.0  # DRY POWDER: Keep 50% of the 2000 INR as un-tradeable cash reserve
+    max_trades_per_day: int = 20
     max_open_positions: int = 2
     
-    # Position & Exposure Limits
-    max_position_size_percent: float = 40.0
-    max_portfolio_exposure_percent: float = 70.0
-    max_sector_exposure_percent: float = 100.0
+    # Position & Exposure Limits (AVOID LEVERAGE)
+    max_position_size_percent: float = 10.0 # Caps allocation to 10%
+    max_portfolio_exposure_percent: float = 50.0  # Max 50% deployed at any time, 50% in cash
+    max_sector_exposure_percent: float = 10.0
     
     # Time-Based Guardrails
     avoid_first_minutes: int = 15
