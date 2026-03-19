@@ -1,6 +1,7 @@
 """
 Agent 3: ExecutionPaperAgent
-Simulates paper trading execution with realistic fills, manages positions, and monitors stop-loss/targets.
+Handles both paper and live trading execution through broker abstraction.
+Simulates order fills with realistic slippage, manages positions, and monitors stop-loss/targets.
 """
 import uuid
 from typing import Optional, List, Dict, Any
@@ -18,27 +19,52 @@ from app.core.utils import logger, log_event, calculate_slippage
 
 class ExecutionPaperAgent:
     """
-    Paper trading execution agent.
+    Execution agent for paper and live trading.
     
     Responsibilities:
-    - Simulate order fills with realistic slippage
+    - Route execution to paper or live broker
     - Manage paper portfolio and positions
     - Monitor stop-loss and target levels
     - Calculate PnL
     - Prevent duplicate orders
     """
     
-    def __init__(self):
+    def __init__(self, broker=None):
+        """
+        Initialize execution agent with optional broker instance.
+        
+        Args:
+            broker: Broker instance (PaperBroker or LiveBroker). 
+                   If None, creates appropriate broker based on settings.
+        """
         self.slippage_percent = settings.PAPER_SLIPPAGE_PERCENT
         self.brokerage_per_order = settings.PAPER_BROKERAGE_PER_ORDER
         self.enable_live_trading = settings.ENABLE_LIVE_TRADING
+        
+        # Set broker - use provided or create default
+        if broker:
+            self.broker = broker
+        else:
+            if settings.ENABLE_LIVE_TRADING:
+                from app.core.live_broker import LiveBroker
+                self.broker = LiveBroker()
+                self.broker_type = "LIVE"
+                logger.info("✓ ExecutionPaperAgent initialized with LiveBroker")
+            else:
+                from app.core.paper_broker import PaperBroker
+                self.broker = PaperBroker()
+                self.broker_type = "PAPER"
+                logger.info("✓ ExecutionPaperAgent initialized with PaperBroker")
+        
+        # Track execution mode
+        self.broker_type = "LIVE" if settings.ENABLE_LIVE_TRADING else "PAPER"
         
         # Track recent order hashes to prevent duplicates
         self.recent_order_hashes: Dict[str, datetime] = {}
     
     def execute(self, intent: TradeIntent, approval: RiskApproval) -> Optional[PaperOrder]:
         """
-        Execute trade intent in paper mode.
+        Execute trade intent (paper or live).
         
         Args:
             intent: Approved trade intent
@@ -72,30 +98,78 @@ class ExecutionPaperAgent:
             logger.error(f"Error fetching LTP: {e}")
             return None
         
-        # Simulate fill
-        order = self._simulate_fill(intent, quantity, current_ltp)
+        # Route to appropriate broker
+        if self.broker_type == "LIVE":
+            order = self._execute_live(intent, quantity, current_ltp)
+        else:
+            order = self._execute_paper(intent, quantity, current_ltp)
         
-        if order.status == OrderStatus.FILLED:
+        if order and order.status == OrderStatus.FILLED:
             # Update position
             self._update_position(order, intent)
             
             # Update daily state
             self._update_daily_state(intent)
             
-            log_event("paper_order_filled", {
+            log_event(f"{self.broker_type.lower()}_order_filled", {
                 "order_id": order.order_id,
                 "symbol": order.symbol,
                 "side": order.side.value,
                 "quantity": order.quantity,
-                "fill_price": order.fill_price,
-                "slippage": order.slippage,
-                "brokerage": order.brokerage
+                "fill_price": order.fill_price if hasattr(order, 'fill_price') else "PENDING",
+                "broker": self.broker_type
             })
         
         # Save order to database
         storage.save_paper_order(order)
         
+        # Track completion for monitoring
+        storage.record_trade_completion(intent.symbol, quantity, order.order_id if order else None)
+        
         return order
+    
+    def _execute_paper(self, intent: TradeIntent, quantity: int, ltp: float) -> Optional[PaperOrder]:
+        """Execute trade on paper broker (simulation)."""
+        return self._simulate_fill(intent, quantity, ltp)
+    
+    def _execute_live(self, intent: TradeIntent, quantity: int, ltp: float) -> Optional[PaperOrder]:
+        """
+        Execute trade on live broker (real Zerodha orders).
+        Maps TradeIntent to Zerodha order format and returns PaperOrder wrapper.
+        """
+        try:
+            # Map side
+            transaction_type = "BUY" if intent.side == TradeSide.BUY else "SELL"
+            
+            # Map order type
+            order_type = "LIMIT" if intent.entry_type == OrderType.LIMIT else "MARKET"
+            
+            # Determine price
+            price = intent.entry_price if order_type == "LIMIT" else ltp
+            
+            # Place order via live broker
+            logger.info(f"Placing LIVE order: {transaction_type} {quantity} {intent.symbol} @ ₹{price:.2f}")
+            
+            order = self.broker.place_order(
+                symbol=intent.symbol,
+                transaction_type=transaction_type,
+                quantity=quantity,
+                price=price,
+                order_type=order_type,
+                strategy_name=intent.strategy_id.value if hasattr(intent.strategy_id, 'value') else str(intent.strategy_id)
+            )
+            
+            logger.info(f"✓ LIVE order placed: {order.order_id}")
+            return order
+            
+        except Exception as e:
+            logger.error(f"Live order execution failed: {e}")
+            log_event("live_order_failed", {
+                "symbol": intent.symbol,
+                "error": str(e),
+                "broker": "zerodha"
+            }, level="ERROR")
+            return None
     
     def _simulate_fill(self, intent: TradeIntent, quantity: int, ltp: float) -> PaperOrder:
         """

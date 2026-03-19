@@ -165,6 +165,29 @@ class Storage:
                 )
             """)
             
+            # Trade completions table (for monitoring)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS trade_completions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    order_id TEXT
+                )
+            """)
+            
+            # Session lock table (prevent duplicate trading sessions)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS session_lock (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    session_id TEXT UNIQUE NOT NULL,
+                    hostname TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    trading_mode TEXT NOT NULL,
+                    status TEXT DEFAULT 'active'
+                )
+            """)
+            
             # Create indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_symbol_time ON market_snapshots(symbol, timestamp)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_intents_timestamp ON trade_intents(timestamp)")
@@ -490,6 +513,232 @@ class Storage:
         realized = state.realized_pnl
         
         return realized, unrealized, realized + unrealized
+    
+    def record_trade_completion(self, symbol: str, quantity: int, order_id: Optional[str]):
+        """Record a completed trade for monitoring purposes."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO trade_completions (symbol, quantity, order_id, timestamp)
+                    VALUES (?, ?, ?, ?)
+                """, (symbol, quantity, order_id, datetime.now().isoformat()))
+        except Exception as e:
+            logger.debug(f"Could not record trade completion: {e}")
+    
+    def get_completed_trades_today(self) -> int:
+        """Get count of completed trades today."""
+        try:
+            today = get_today_date_str()
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT COUNT(*) as count FROM trade_completions
+                    WHERE DATE(timestamp) = ?
+                """, (today,))
+                result = cursor.fetchone()
+                return result[0] if result else 0
+        except Exception as e:
+            logger.debug(f"Could not get completed trades: {e}")
+            return 0
+    
+    def get_last_trade_time(self) -> Optional[datetime]:
+        """Get timestamp of the last completed trade."""
+        try:
+            today = get_today_date_str()
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT MAX(timestamp) FROM trade_completions
+                    WHERE DATE(timestamp) = ?
+                """, (today,))
+                result = cursor.fetchone()
+                if result and result[0]:
+                    return datetime.fromisoformat(result[0])
+        except Exception as e:
+            logger.debug(f"Could not get last trade time: {e}")
+        return None
+    
+    def get_monitoring_status(self) -> Dict[str, Any]:
+        """Get current monitoring status for display."""
+        state = self.get_or_create_daily_state()
+        realized, unrealized, total = self.calculate_total_pnl()
+        
+        return {
+            "mode": "LIVE" if settings.ENABLE_LIVE_TRADING else "PAPER",
+            "capital": settings.DAILY_CAPITAL,
+            "current_pnl": total,
+            "realized_pnl": realized,
+            "is_monitoring": not state.safe_mode,
+            "safe_mode_active": state.safe_mode,
+            "trades_today": state.trades_count,
+            "max_trades": state.max_trades,
+            "loss_budget_remaining": state.loss_budget_remaining
+        }
+    
+    def get_next_trade_prediction(self) -> Dict[str, Any]:
+        """
+        Predict when the next trade might occur based on history.
+        Returns estimated time and confidence percentage.
+        """
+        state = self.get_or_create_daily_state()
+        
+        # If SAFE_MODE, next trade is TBD
+        if state.safe_mode:
+            return {
+                "status": "TBD",
+                "reason": "SAFE_MODE active - no trading",
+                "confidence_pct": 0,
+                "estimated_time": None
+            }
+        
+        # If max trades reached, no next trade today
+        if state.trades_count >= state.max_trades:
+            return {
+                "status": "DONE",
+                "reason": f"Max trades ({state.max_trades}) reached today",
+                "confidence_pct": 100,
+                "estimated_time": None
+            }
+        
+        # Predict based on historical trade intervals
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                today = get_today_date_str()
+                
+                cursor.execute("""
+                    SELECT timestamp FROM trade_completions
+                    WHERE DATE(timestamp) = ?
+                    ORDER BY timestamp DESC
+                    LIMIT 5
+                """, (today,))
+                
+                completions = [datetime.fromisoformat(row[0]) for row in cursor.fetchall()]
+                
+                if len(completions) < 2:
+                    # Not enough history, estimate 5-15 minutes
+                    estimated_time = datetime.now().timestamp() + (5 * 60)
+                    return {
+                        "status": "WAITING",
+                        "reason": "Insufficient trade history for prediction",
+                        "confidence_pct": 30,
+                        "estimated_time": estimated_time
+                    }
+                
+                # Calculate average interval between last 4 trades
+                intervals = []
+                for i in range(len(completions) - 1):
+                    delta = (completions[i] - completions[i+1]).total_seconds()
+                    intervals.append(delta)
+                
+                avg_interval = sum(intervals) / len(intervals) if intervals else 300
+                last_trade_time = completions[0]
+                next_trade_est = last_trade_time.timestamp() + avg_interval
+                
+                # Confidence based on interval consistency
+                variance = sum((x - avg_interval) ** 2 for x in intervals) / len(intervals) if intervals else 0
+                std_dev = variance ** 0.5
+                confidence = max(30, min(90, 100 - (std_dev / avg_interval * 100)))
+                
+                return {
+                    "status": "WAITING",
+                    "reason": f"Avg interval: {int(avg_interval/60)} min",
+                    "confidence_pct": int(confidence),
+                    "estimated_time": next_trade_est
+                }
+        except Exception as e:
+            logger.debug(f"Could not predict next trade: {e}")
+            return {
+                "status": "WAITING",
+                "reason": "Unable to predict",
+                "confidence_pct": 0,
+                "estimated_time": None
+            }
+    
+    def acquire_session_lock(self, trading_mode: str = "PAPER") -> tuple[bool, str]:
+        """
+        Acquire exclusive session lock for trading.
+        Only one trading session allowed per trading day during market hours.
+        
+        Args:
+            trading_mode: "PAPER" or "LIVE"
+        
+        Returns:
+            (success: bool, message: str)
+        """
+        import socket
+        import uuid
+        
+        try:
+            session_id = str(uuid.uuid4())
+            hostname = socket.gethostname()
+            now = datetime.now().isoformat()
+            today = get_today_date_str()
+            
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Check if active session exists for today
+                cursor.execute("""
+                    SELECT session_id, hostname, trading_mode FROM session_lock
+                    WHERE DATE(started_at) = ? AND status = 'active'
+                """, (today,))
+                
+                existing = cursor.fetchone()
+                
+                if existing:
+                    session_info = dict(existing)
+                    msg = f"Trading session already active on device '{session_info['hostname']}' in {session_info['trading_mode']} mode"
+                    logger.warning(msg)
+                    return False, msg
+                
+                # Clear any old inactive sessions from today
+                cursor.execute("""
+                    DELETE FROM session_lock WHERE DATE(started_at) < ?
+                """, (today,))
+                
+                # Create new session lock
+                cursor.execute("""
+                    INSERT OR REPLACE INTO session_lock 
+                    (id, session_id, hostname, started_at, trading_mode, status)
+                    VALUES (1, ?, ?, ?, ?, 'active')
+                """, (session_id, hostname, now, trading_mode))
+                
+                logger.info(f"Session lock acquired: {session_id} on {hostname}")
+                return True, f"Session started on {hostname} ({trading_mode} mode)"
+        
+        except Exception as e:
+            logger.error(f"Failed to acquire session lock: {e}")
+            return False, str(e)
+    
+    def release_session_lock(self):
+        """Release the trading session lock."""
+        try:
+            today = get_today_date_str()
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    DELETE FROM session_lock WHERE DATE(started_at) = ? AND status = 'active'
+                """, (today,))
+                logger.info("Session lock released")
+        except Exception as e:
+            logger.debug(f"Could not release session lock: {e}")
+    
+    def is_session_active(self) -> bool:
+        """Check if a trading session is currently active."""
+        try:
+            today = get_today_date_str()
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT session_id FROM session_lock
+                    WHERE DATE(started_at) = ? AND status = 'active'
+                """, (today,))
+                return cursor.fetchone() is not None
+        except Exception as e:
+            logger.debug(f"Could not check session: {e}")
+            return False
 
 
 # Global storage instance
