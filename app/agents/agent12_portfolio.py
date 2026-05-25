@@ -26,11 +26,26 @@ class PortfolioAgent(BaseAgent):
 
     def __init__(self, bus) -> None:
         super().__init__(bus)
-        self.broker = LiveBroker()
+        self._broker: LiveBroker | None = None
+
+    def _get_broker(self) -> LiveBroker | None:
+        if self._broker is not None:
+            return self._broker
+        try:
+            self._broker = LiveBroker()
+            return self._broker
+        except Exception:
+            return None
 
     def run_once(self) -> AgentResult:
-        positions = self.broker.get_portfolio() or []
-        kite = zerodha_auth.get_kite_instance()
+        broker = self._get_broker()
+        if broker is None:
+            return AgentResult(self.name, False, error="awaiting kite login")
+        positions = broker.get_portfolio() or []
+        try:
+            kite = zerodha_auth.get_kite_instance()
+        except Exception:
+            return AgentResult(self.name, False, error="awaiting kite login")
         margins = kite.margins(segment="equity") or {}
         avail = (margins.get("available") or {})
         used = (margins.get("utilised") or {})

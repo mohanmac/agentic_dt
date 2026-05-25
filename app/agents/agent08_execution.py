@@ -25,7 +25,16 @@ class ExecutionAgent(BaseAgent):
 
     def __init__(self, bus) -> None:
         super().__init__(bus)
-        self.broker = LiveBroker()
+        self._broker: LiveBroker | None = None
+
+    def _get_broker(self) -> LiveBroker | None:
+        if self._broker is not None:
+            return self._broker
+        try:
+            self._broker = LiveBroker()
+            return self._broker
+        except Exception:
+            return None  # awaiting kite login
 
     def run_once(self) -> AgentResult:
         approved = self.bus.get("approved_decision", max_age_s=30.0) or {}
@@ -33,6 +42,9 @@ class ExecutionAgent(BaseAgent):
             return AgentResult(self.name, True, payload={"placed": 0})
         if not bool(self.bus.get("auto_execute") or False):
             return AgentResult(self.name, True, payload={"placed": 0, "skipped": "auto_execute_off"})
+        broker = self._get_broker()
+        if broker is None:
+            return AgentResult(self.name, False, error="awaiting kite login")
         done: set[str] = set(self.bus.get("executed_today") or set())
         placed = 0
         for sym, dec in approved.items():
@@ -43,7 +55,7 @@ class ExecutionAgent(BaseAgent):
             qty = max(1, int(notional / entry)) if entry else 0
             if not (entry and stop and tgt and qty):
                 continue
-            self.broker.place_bracket_buy(
+            broker.place_bracket_buy(
                 symbol=sym,
                 quantity=qty,
                 limit_price=float(entry),
