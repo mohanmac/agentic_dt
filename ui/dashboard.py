@@ -93,6 +93,21 @@ def bootstrap_auth() -> None:
             pass
         st.sidebar.error(f"Login failed: {err}")
         return
+    # Cloud OAuth: Kite redirects back here with ?request_token=... &action=login.
+    # Exchange in-process — no need for the uvicorn /callback route.
+    if "request_token" in qp:
+        token = qp.get("request_token")
+        try:
+            zerodha_auth.exchange_request_token(token)
+            log.info("kite_oauth_exchange_success")
+        except Exception as exc:
+            log.exception("kite_oauth_exchange_failed")
+            st.sidebar.error(f"Kite login failed: {exc}")
+        try:
+            st.query_params.clear()
+        except Exception:
+            pass
+        st.rerun()
     if "auth" in qp:
         try:
             st.query_params.clear()
