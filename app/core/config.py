@@ -27,9 +27,13 @@ class Settings(BaseSettings):
     # Google Gemini Configuration
     GOOGLE_API_KEY: str = Field(default="", description="Google API Key for Gemini")
     GOOGLE_MODEL: str = Field(default="gemini-1.5-pro", description="Gemini model name")
-    
+
+    # OpenAI Configuration — single shared key for the 12-agent system
+    OPENAI_API_KEY: str = Field(default="", description="OpenAI API key")
+    OPENAI_MODEL: str = Field(default="gpt-4o-mini", description="OpenAI chat model name")
+
     # LLM Provider Selection
-    LLM_PROVIDER: str = Field(default="ollama", description="LLM provider: 'ollama' or 'google'")
+    LLM_PROVIDER: str = Field(default="ollama", description="LLM provider: 'ollama', 'google', or 'openai'")
     
     # Trading Configuration
     DAILY_CAPITAL: float = Field(default=2000.0, description="Daily trading capital in INR")

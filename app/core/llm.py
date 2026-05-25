@@ -1,6 +1,6 @@
 """
 Unified LLM Client for DayTradingPaperBot.
-Supports multiple providers: Ollama, Google Gemini.
+Supports multiple providers: OpenAI, Google Gemini, Ollama.
 """
 import requests
 import json
@@ -10,6 +10,11 @@ import google.generativeai as genai
 
 from app.core.config import settings
 from app.core.utils import logger, log_event
+
+try:
+    from openai import OpenAI  # SDK v1.x
+except ImportError:
+    OpenAI = None  # provider stays unavailable until `pip install openai`
 
 
 class LLMProvider(ABC):
@@ -163,16 +168,68 @@ class GeminiProvider(LLMProvider):
             return False
 
 
+class OpenAIProvider(LLMProvider):
+    """Client for OpenAI Chat Completions (single shared API key)."""
+
+    def __init__(self):
+        super().__init__()
+        self.api_key = settings.OPENAI_API_KEY
+        self.model_name = settings.OPENAI_MODEL
+        if self.api_key and OpenAI is not None:
+            self.client = OpenAI(api_key=self.api_key)
+        else:
+            self.client = None
+            if not self.api_key:
+                logger.warning("OPENAI_API_KEY not set — OpenAIProvider disabled")
+            if OpenAI is None:
+                logger.warning("openai SDK not installed — run `pip install openai`")
+
+    def generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 500,
+    ) -> str:
+        if not self.client:
+            raise ValueError("OpenAI not configured (missing api key or SDK)")
+        messages: List[Dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        resp = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        if getattr(resp, "usage", None):
+            self.total_tokens_used += getattr(resp.usage, "total_tokens", 0) or 0
+        return (resp.choices[0].message.content or "").strip()
+
+    def check_health(self) -> bool:
+        if not self.client:
+            return False
+        try:
+            self.client.models.list()
+            return True
+        except Exception as exc:
+            logger.error(f"OpenAI health check failed: {exc}")
+            return False
+
+
 class LLMClient:
     """Unified client that delegates to the configured provider."""
-    
+
     def __init__(self):
         self.provider_type = settings.LLM_PROVIDER
         self.provider: LLMProvider = None
         self._initialize_provider()
-        
+
     def _initialize_provider(self):
-        if self.provider_type == "google":
+        if self.provider_type == "openai":
+            self.provider = OpenAIProvider()
+        elif self.provider_type == "google":
             self.provider = GeminiProvider()
         else:
             self.provider = OllamaProvider()
