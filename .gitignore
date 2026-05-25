@@ -38,6 +38,12 @@ wheels/
 venv/
 env/
 ENV/
+.venv/
+
+# Local scratch + legacy backups (kept locally, excluded from the proactive repo)
+*.bak
+*.OLD_DELETE_ME
+_test_min.py
 
 # IDEs
 .vscode/

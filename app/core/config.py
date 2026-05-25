@@ -15,7 +15,10 @@ class Settings(BaseSettings):
     # Zerodha Kite Connect
     KITE_API_KEY: str = Field(default="your_api_key_here", description="Zerodha API Key")
     KITE_API_SECRET: str = Field(default="your_api_secret_here", description="Zerodha API Secret")
-    KITE_REDIRECT_URL: str = Field(default="https://mohanmac-agentic-dt-uidashboard-v3-w6chek.streamlit.app")
+    KITE_REDIRECT_URL: str = Field(
+        default="https://mohanmac-agentic-dt-uidashboard-v3-w6chek.streamlit.app",
+        description="Must match Redirect URL in Kite developer console (e.g. your Streamlit app URL).",
+    )
     
     # Ollama Configuration
     OLLAMA_BASE_URL: str = Field(default="http://localhost:11434")
@@ -40,7 +43,7 @@ class Settings(BaseSettings):
     TRADING_START_HOUR: int = Field(default=9)
     TRADING_START_MINUTE: int = Field(default=15)
     TRADING_END_HOUR: int = Field(default=15)
-    TRADING_END_MINUTE: int = Field(default=15)
+    TRADING_END_MINUTE: int = Field(default=30)
     EXIT_ONLY_HOUR: int = Field(default=15)
     EXIT_ONLY_MINUTE: int = Field(default=0)
     
@@ -173,6 +176,7 @@ def validate_settings():
     print(f"  - Max Daily Loss: ₹{settings.MAX_DAILY_LOSS}")
     print(f"  - Ollama Model: {settings.OLLAMA_MODEL}")
     print(f"  - Trading Symbols: {', '.join(settings.get_trading_symbols())}")
+    print(f"  - Kite OAuth redirect: {settings.KITE_REDIRECT_URL.strip()}")
 
 
 if __name__ == "__main__":

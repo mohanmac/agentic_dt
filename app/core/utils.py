@@ -138,7 +138,7 @@ def is_trading_hours() -> tuple[bool, Optional[str]]:
     now = datetime.now()
     current_time = now.time()
     
-    # Trading hours: 9:15 AM to 3:15 PM IST
+    # Normal equity session (see market_calendar): 9:15–15:30 IST; uses settings below.
     start_time = time(
         settings.TRADING_START_HOUR,
         settings.TRADING_START_MINUTE

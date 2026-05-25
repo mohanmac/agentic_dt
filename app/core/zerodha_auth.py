@@ -38,25 +38,26 @@ class ZerodhaAuth:
     def redirect_url(self) -> str:
         return settings.KITE_REDIRECT_URL.strip()
     
+    # Zerodha Kite Connect OAuth login (exact path users expect in the browser)
+    KITE_CONNECT_LOGIN_BASE = "https://kite.zerodha.com/connect/login"
+
     def generate_login_url(self) -> str:
         """
-        Generate Kite Connect login URL for manual user authentication.
-        
-        Returns:
-            Login URL that user should visit in browser
+        Kite Connect login: ``https://kite.zerodha.com/connect/login`` with ``v=3`` and ``api_key``.
+
+        The browser is redirected to **KITE_REDIRECT_URL** after login; that URL must match
+        exactly what you saved at https://developers.kite.trade (e.g. ``http://127.0.0.1:8000/callback``).
         """
-        # Ensure kite client has the latest api_key
-        self.kite.api_key = self.api_key
-        login_url = self.kite.login_url()
-        
-        log_event("login_url_generated", {
-            "url": login_url,
-            "redirect_url": self.redirect_url
-        })
-        
-        logger.info(f"Generated login URL: {login_url}")
-        logger.info("User must manually log in via browser to complete authentication")
-        
+        from urllib.parse import urlencode
+
+        key = (self.api_key or "").strip() or "your_api_key_here"
+        login_url = f"{self.KITE_CONNECT_LOGIN_BASE}?{urlencode({'v': '3', 'api_key': key})}"
+
+        log_event(
+            "login_url_generated",
+            {"url": login_url, "redirect_url": self.redirect_url},
+        )
+        logger.info("Kite Connect login URL: %s", login_url)
         return login_url
     
     def exchange_request_token(self, request_token: str) -> Dict[str, Any]:

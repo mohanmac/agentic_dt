@@ -1,686 +1,753 @@
 """
-Streamlit dashboard for DayTradingPaperBot.
-Real-time monitoring, HITL approvals, and system status.
+Zerodha Intraday Bot — real-money, phase-aware auto loop.
+
+Once you click **Enable bot**, the background TradingEngine takes over:
+  • Pre-market (<9:15) — idle
+  • 9:15–9:30        — auto-arms, warm-up, no trades
+  • 9:30–10:15       — observation only (noisy open)
+  • 10:15–14:45      — scans every 5s; trades if Auto-execute is ON
+  • 14:45–15:30      — no new entries; broker MIS auto-squares-off
+
+Auto-execute defaults to OFF — when OFF, the engine still scans and the UI
+shows candidates so you can place orders manually.
 """
-import streamlit as st
-import pandas as pd
-from datetime import datetime
-import time
+from __future__ import annotations
+
 import sys
-import requests
-import webbrowser
+import logging
+import traceback
+from datetime import datetime
 from pathlib import Path
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Trust the OS keychain so corporate MITM TLS works. Must run before any HTTPS.
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
 
-from app.core.storage import storage
-from app.core.zerodha_auth import zerodha_auth
-from app.core.config import settings
-from app.core.utils import format_price, format_pnl
-from app.core.schemas import OrderStatus
+import streamlit as st
 
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-# Page config
 st.set_page_config(
-    page_title="DayTradingPaperBot",
-    page_icon="📈",
+    page_title="Zerodha Intraday Bot",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# Custom CSS
-st.markdown("""
-<style>
-    .big-metric {
-        font-size: 2rem;
-        font-weight: bold;
-    }
-    .safe-mode-alert {
-        background-color: #ff4444;
-        color: white;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        font-weight: bold;
-        text-align: center;
-        margin-bottom: 1rem;
-    }
-    .success-box {
-        background-color: #00cc66;
-        color: white;
-        padding: 0.5rem;
-        border-radius: 0.3rem;
-        margin: 0.5rem 0;
-    }
-    .warning-box {
-        background-color: #ff9900;
-        color: white;
-        padding: 0.5rem;
-        border-radius: 0.3rem;
-        margin: 0.5rem 0;
-    }
-</style>
-""", unsafe_allow_html=True)
+log = logging.getLogger("app")
+
+try:
+    from app.core.config import settings
+    from app.core.zerodha_auth import zerodha_auth
+    from app.core.market_calendar import (
+        can_place_nse_bse_equity_trade,
+        is_nse_bse_trading_day,
+        market_status_line,
+        ist_now,
+        IST,
+    )
+    from app.core.risk_engine import RiskEngine
+    from app.core.live_broker import LiveBroker
+    from app.core.intraday_agent import (
+        scan_intraday_universe,
+        session_capital,
+        MIN_TARGET_PCT,
+        MAX_STOP_LOSS_PCT,
+        MAX_TRADES_PER_DAY,
+    )
+    from app.core.trading_engine import TradingEngine, PHASE_ACTIVE
+    from app.agents.orchestrator import Orchestrator
+except Exception as e:
+    st.error(f"Import failed: {e}")
+    st.code(traceback.format_exc())
+    st.stop()
 
 
-def main():
-    """Main dashboard function."""
-    
-    # Header
-    col1, col2, col3 = st.columns([2, 1, 1])
-    
-    with col1:
-        st.title("📈 DayTradingPaperBot")
-    
-    with col2:
-        st.metric("Mode", "PAPER" if not settings.ENABLE_LIVE_TRADING else "LIVE ⚠️")
-    
-    with col3:
-        current_time = datetime.now().strftime("%H:%M:%S")
-        st.metric("Time", current_time)
-    
-    # Auth status
-    auth_status = zerodha_auth.get_auth_status()
-    
-    # Initialize session state for login flow
-    if 'login_step' not in st.session_state:
-        st.session_state.login_step = 1
-        
-    # --- Sidebar - Authentication ---
-    with st.sidebar:
-        st.header("🔐 Authentication")
-        
-        if not auth_status.get("authenticated"):
-            st.warning("❌ Not Authenticated")
-            
-            # Step 1: Login Credentials
-            st.markdown("### Step 1: Login")
-            st.info("Enter details to open Zerodha login.")
-            
-            user_id = st.text_input("User ID", value="RVQ434")
-            password = st.text_input("Password", type="password")
-                
-            if st.button("🚀 Login & Get Token"):
-                if user_id and password:
-                    st.session_state.temp_user_id = user_id
-                    
-                    # Fetch login URL
-                    try:
-                        response = requests.get("http://127.0.0.1:8000/auth/login_url", timeout=2)
-                        if response.status_code == 200:
-                            login_url = response.json().get("login_url")
-                            st.session_state.auth_url = login_url
-                            st.session_state.login_step = 2
-                            
-                            # Auto-open in new tab
-                            webbrowser.open_new_tab(login_url)
-                            st.success("Opening Zerodha login page...")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("Could not fetch URL")
-                    except Exception:
-                        st.error("Auth server unreachable")
-                else:
-                    st.warning("Enter User ID & Password")
-            
-            # Step 2: Login Link & Token Entry
-            if st.session_state.get('login_step', 1) >= 2:
-                # Login Link
-                if st.session_state.get('auth_url'):
-                    st.markdown("---")
-                    st.markdown(
-                        f'''
-                        <a href="{st.session_state.auth_url}" target="_blank" style="
-                            display: inline-block;
-                            width: 100%;
-                            background-color: #ff5722;
-                            color: white;
-                            text-align: center;
-                            text-decoration: none;
-                            padding: 10px;
-                            border-radius: 5px;
-                            font-weight: bold;
-                            margin-bottom: 10px;">
-                            🔑 Open Zerodha Login (New Tab)
-                        </a>
-                        ''', 
-                        unsafe_allow_html=True
-                    )
-                    st.info("1. Click above to log in.\n2. Copy the 'request_token' from the URL.\n3. Paste it below.")
-                
-                st.markdown("---")
-                st.markdown("### Step 2: Enter Token")
-                
-                manual_token = st.text_input("Access Token / Request Token", type="password", help="Paste from Zerodha redirect")
-                
-                if st.button("✅ Sync & Verify"):
-                    if manual_token:
-                        uid = st.session_state.get('temp_user_id', 'Unknown')
-                        # Try to handle both access token (direct) or request token (needs exchange)
-                        
-                        try:
-                            # Attempt 1: Try exchanging as Request Token
-                            with st.spinner("Exchanging token..."):
-                                zerodha_auth.exchange_request_token(manual_token)
-                                st.success("✅ Token Exchanged & Authenticated!")
-                                time.sleep(1)
-                                st.rerun()
-                                
-                        except Exception as e:
-                            # Attempt 2: Treat as direct Access Token
-                            st.warning(f"Exchange failed. Trying as Access Token... ({str(e)})")
-                            time.sleep(0.5)
-                            
-                            try:
-                                # Set it
-                                zerodha_auth.set_manual_token(manual_token, user_id=uid, user_name=uid)
-                                
-                                # VALIDATE IMMEDIATELY
-                                is_valid, profile = zerodha_auth.validate_token()
-                                
-                                if is_valid:
-                                    st.success(f"✅ Access Token Verified! Welcome {profile.get('user_name')}")
-                                    time.sleep(1)
-                                    st.rerun()
-                                else:
-                                    # If validation fails, it's neither a valid Request Token nor a valid Access Token
-                                    st.error("❌ Authentication Failed!")
-                                    st.error("The token provided is invalid or expired.")
-                                    st.markdown("""
-                                    **Possible causes:**
-                                    1. **Token Expired:** Request tokens expire in minutes. Generate a new one.
-                                    2. **API Secret Mismatch:** Check `KITE_API_SECRET` in your `.env` file.
-                                    3. **Already Used:** Tokens are one-time use.
-                                    """)
-                                    # We do NOT rerun here, so user sees the error
-                                    
-                            except Exception as inner_e:
-                                st.error(f"Critical Auth Error: {str(inner_e)}")
-                    else:
-                        st.error("Paste token first")
-            
-            # Debug info at bottom of sidebar
-            with st.expander("🛠️ Debug Config"):
-                st.write(f"**API Key:** `{settings.KITE_API_KEY[:4]}...{settings.KITE_API_KEY[-4:]}`")
-                st.write(f"**Secret:** `{settings.KITE_API_SECRET[:4]}...{settings.KITE_API_SECRET[-4:]}`")
-                st.info("Restart app if these are wrong.")
-                    
-        else:
-            # Authenticated State in Sidebar
-            st.success("✅ Connected")
-            st.info("Ready for Trading")
-            st.write(f"**User:** {auth_status.get('user_name', 'Unknown')}")
-            
-            if st.button("Logout"):
-                zerodha_auth.logout()
-                st.rerun()
-                
-            st.markdown("---")
-            # Emerging Button also goes here if authenticated
-            if st.button("Emerging 🚀", help="Show trends of emerging players"):
-                show_emerging_trends()
+# ─────────────────────────────────────────────────────────────────────────────
+# Session state
+# ─────────────────────────────────────────────────────────────────────────────
+ss = st.session_state
+ss.setdefault("authed", False)
+ss.setdefault("profile", None)
+ss.setdefault("strategy_enabled", {
+    "Opening Range Breakout": True,
+    "VWAP Pullback": True,
+    "Momentum": True,
+})
 
-    # --- Main Content ---
-    if not auth_status.get("authenticated"):
-        st.info("👈 Please authenticate in the Left Sidebar to access the dashboard.")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Auth bootstrap
+# ─────────────────────────────────────────────────────────────────────────────
+def bootstrap_auth() -> None:
+    if ss.authed:
         return
-
-    # Reset login step if authenticated
-    if auth_status.get("authenticated"):
-        st.session_state.login_step = 1
-    
-    # Get daily state
-    daily_state = storage.get_or_create_daily_state()
-    
-    # SAFE_MODE alert
-    if daily_state.safe_mode:
-        st.markdown(
-            '<div class="safe-mode-alert">🚨 SAFE MODE ACTIVE - MAX DAILY LOSS REACHED 🚨</div>',
-            unsafe_allow_html=True
-        )
-    
-    # Tabs
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "📊 Overview",
-        "💼 Positions",
-        "📋 Trade History",
-        "✅ HITL Approvals",
-        "⚙️ Settings",
-        "📝 Manual Order"
-    ])
-    
-    with tab1:
-        show_overview(daily_state)
-    
-    with tab2:
-        show_positions()
-    
-    with tab3:
-        show_trade_history()
-    
-    with tab4:
-        show_hitl_approvals()
-    
-    with tab5:
-        show_settings()
-
-    with tab6:
-        show_manual_order()
-    
-    # Auto-refresh
-    time.sleep(10)
-    st.rerun()
-
-
-def show_overview(daily_state):
-    """Show overview metrics."""
-    st.header("Daily Overview")
-    
-    # Metrics row
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        pnl_color = "normal" if daily_state.total_pnl >= 0 else "inverse"
-        st.metric(
-            "Total P&L",
-            format_pnl(daily_state.total_pnl),
-            delta=f"{daily_state.total_pnl:+.2f}",
-            delta_color=pnl_color
-        )
-    
-    with col2:
-        st.metric(
-            "Realized P&L",
-            format_pnl(daily_state.realized_pnl)
-        )
-    
-    with col3:
-        st.metric(
-            "Unrealized P&L",
-            format_pnl(daily_state.unrealized_pnl)
-        )
-    
-    with col4:
-        st.metric(
-            "Trades Today",
-            f"{daily_state.trades_count} / {daily_state.max_trades}"
-        )
-    
-    # Loss budget
-    st.subheader("Loss Budget")
-    
-    budget_pct = (daily_state.loss_budget_remaining / daily_state.max_daily_loss) * 100
-    
-    st.progress(budget_pct / 100)
-    st.write(f"Remaining: {format_price(daily_state.loss_budget_remaining)} / {format_price(daily_state.max_daily_loss)}")
-    
-    # Active strategy
-    st.subheader("Active Strategy")
-    
-    if daily_state.active_strategy:
-        st.info(f"📊 {daily_state.active_strategy.value.replace('_', ' ').title()}")
-        
-        if daily_state.strategy_switched_at:
-            st.caption(f"Last switched: {daily_state.strategy_switched_at.strftime('%H:%M:%S')}")
-    else:
-        st.warning("No active strategy yet")
-
-
-def show_emerging_trends():
-    """Show trends for emerging players."""
-    st.markdown("## 🚀 Emerging 7 (Low Cost & Rising)")
-    st.info("Tracking specific low-cost, high-potential emerging stocks.")
-    
-    symbols = settings.get_trading_symbols()
-    
-    # Try to fetch live data
-    from app.core.market_data import market_data
-    
-    with st.spinner("Fetching live prices..."):
+    qp = st.query_params
+    if "auth_error" in qp:
+        err = qp.get("auth_error")
         try:
-            ltp_data = market_data.get_ltp(symbols)
+            st.query_params.clear()
         except Exception:
-            ltp_data = {}
-            st.warning("⚠️ Live market data unavailable. Showing symbol list.")
-    
-    # Display in grid
-    st.markdown("### Market Watch")
-    cols = st.columns(3)
-    for i, symbol in enumerate(symbols):
-        with cols[i % 3]:
-            price = ltp_data.get(symbol, 0.0)
-            
-            # Simulated trend color (green if price > 0)
-            delta_color = "normal"
-            
-            st.metric(
-                label=symbol,
-                value=f"₹{price:.2f}" if price else "N/A",
-                delta=None
-            )
-            
-            # Add a mini chart or extra info if available (placeholder for now)
-            if price > 0 and price < 100:
-                st.caption("🔥 Low Cost GEM")
-    
-    st.markdown("---")
-
-
-def show_manual_order():
-    """Show manual order form."""
-    st.header("Manual Order (Paper)")
-    
-    with st.form("manual_order_form"):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            symbol = st.selectbox("Symbol", settings.get_trading_symbols())
-            side = st.selectbox("Side", ["BUY", "SELL"])
-        
-        with col2:
-            order_type = st.selectbox("Type", ["MARKET", "LIMIT"])
-            quantity = st.number_input("Quantity", min_value=1, value=1)
-        
-        price = st.number_input("Price (Limit)", min_value=0.0, value=0.0, step=0.05)
-        
-        submitted = st.form_submit_button("Place Order")
-        
-        if submitted:
-            place_manual_order(symbol, side, order_type, quantity, price)
-
-
-def place_manual_order(symbol, side, order_type, quantity, price):
-    """Execute manual order."""
-    from app.core.schemas import TradeIntent, TradeSide, OrderType, StrategyType, RiskApproval
-    from app.agents.execution_paper import execution_paper
-    from app.core.storage import storage
-    import uuid
-    
+            pass
+        st.sidebar.error(f"Login failed: {err}")
+        return
+    if "auth" in qp:
+        try:
+            st.query_params.clear()
+        except Exception:
+            pass
     try:
-        side_enum = TradeSide.BUY if side == "BUY" else TradeSide.SELL
-        type_enum = OrderType.MARKET if order_type == "MARKET" else OrderType.LIMIT
-        
-        # Create intent
-        intent = TradeIntent(
-            strategy_id=StrategyType.MOMENTUM_BREAKOUT,  # Default for manual
-            symbol=symbol,
-            side=side_enum,
-            quantity=quantity,
-            entry_type=type_enum,
-            entry_price=price if type_enum == OrderType.LIMIT else 0.0,
-            stop_loss_price=0.0,  # Manual orders might not have SL
-            target_price=0.0,
-            confidence_score=1.0,
-            rationale="Manual Order from Dashboard",
-            expected_risk_rupees=0.0,
-            status="approved"
-        )
-        
-        # Save intent to get ID
-        intent_id = storage.save_trade_intent(intent)
-        
-        # Create approval
-        approval = RiskApproval(
-            intent_id=intent_id,
-            approved=True,
-            adjusted_quantity=quantity,
-            remaining_loss_budget=1000.0, # Placeholder
-            trades_today=0,
-            current_strategy=StrategyType.MOMENTUM_BREAKOUT
-        )
-        
-        # Save approval
-        storage.save_approval(approval)
-        
-        # Execute
-        order = execution_paper.execute(intent, approval)
-        
-        if order:
-            st.success(f"✅ Order placed: {order.symbol} {order.side.value} {order.quantity} @ {order.fill_price}")
-            time.sleep(1)
-            st.rerun()
-        else:
-            st.error("❌ Order execution failed (check logs)")
-            
+        zerodha_auth._load_token()
+        if zerodha_auth.kite.access_token:
+            ok, profile = zerodha_auth.validate_token()
+            if ok and profile:
+                ss.authed = True
+                ss.profile = {
+                    "user_id": profile.get("user_id"),
+                    "user_name": profile.get("user_name"),
+                    "email": profile.get("email"),
+                }
     except Exception as e:
-        st.error(f"Error placing order: {str(e)}")
+        log.exception("bootstrap_auth failed")
+        st.sidebar.warning(f"Auth check failed: {e}")
 
 
-def show_positions():
-    """Show open positions."""
-    st.header("Open Positions")
-    
-    positions = storage.get_all_positions()
-    
-    if not positions:
-        st.info("No open positions")
+bootstrap_auth()
+
+# Start engine singleton (idle until Enable bot is clicked)
+engine = TradingEngine()
+
+
+@st.cache_resource
+def get_orchestrator() -> Orchestrator:
+    """One Orchestrator across Streamlit reruns — threads aren't recreated each tick."""
+    return Orchestrator()
+
+
+orchestrator = get_orchestrator()
+ss.setdefault("agents_running", False)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sidebar
+# ─────────────────────────────────────────────────────────────────────────────
+PULSE_CSS = """
+<style>
+@keyframes pulseDot {
+  0%   { opacity: 1; transform: scale(1); }
+  50%  { opacity: 0.35; transform: scale(1.4); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.pulse-dot {
+  display: inline-block; width: 9px; height: 9px;
+  border-radius: 50%; background: #16a34a; margin-right: 6px;
+  vertical-align: middle; animation: pulseDot 1.1s ease-in-out infinite;
+}
+.idle-dot {
+  display: inline-block; width: 9px; height: 9px;
+  border-radius: 50%; background: #6b7280; margin-right: 6px;
+  vertical-align: middle; opacity: 0.45;
+}
+.warn-dot {
+  display: inline-block; width: 9px; height: 9px;
+  border-radius: 50%; background: #f59e0b; margin-right: 6px;
+  vertical-align: middle;
+}
+.agent-line { font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; line-height: 1.5; }
+</style>
+"""
+
+
+def sidebar_llm_meter() -> None:
+    """LLM tokens + tokens-per-trade — always visible at the top of the sidebar."""
+    try:
+        from app.core.llm import llm_client
+        total_tokens = int(getattr(llm_client, "total_tokens_used", 0) or 0)
+    except Exception:
+        total_tokens = 0
+    try:
+        trades_today = int(engine.risk_engine.daily_stats.total_trades or 0)
+    except Exception:
+        trades_today = 0
+    per_trade = (total_tokens / trades_today) if trades_today else None
+
+    c1, c2 = st.sidebar.columns(2)
+    c1.metric("LLM tokens", f"{total_tokens:,}")
+    c2.metric("Per trade", f"{per_trade:,.0f}" if per_trade is not None else "—",
+              help="Total LLM tokens consumed today ÷ trades placed today.")
+    st.sidebar.caption("LLM used only by **agent09_sentiment** — every other agent is pure Python.")
+
+
+def sidebar() -> None:
+    st.sidebar.markdown(PULSE_CSS, unsafe_allow_html=True)
+    st.sidebar.title("Zerodha Intraday Bot")
+    sidebar_llm_meter()
+    st.sidebar.divider()
+    st.sidebar.caption(
+        f"Capital ₹{settings.DAILY_CAPITAL:,.0f}  ·  SL <10%  ·  Target ≥{MIN_TARGET_PCT:g}%  "
+        f"·  Max {MAX_TRADES_PER_DAY}/day"
+    )
+
+    api_ok = (
+        settings.KITE_API_KEY and settings.KITE_API_KEY.strip() != "your_api_key_here"
+        and settings.KITE_API_SECRET and settings.KITE_API_SECRET.strip() != "your_api_secret_here"
+    )
+    if not api_ok:
+        st.sidebar.error("KITE_API_KEY / KITE_API_SECRET missing in .env")
         return
-    
-    # Convert to DataFrame
-    pos_data = []
-    for pos in positions:
-        pos_data.append({
-            "Symbol": pos.symbol,
-            "Quantity": pos.quantity,
-            "Avg Price": f"₹{pos.avg_price:.2f}",
-            "Current Price": f"₹{pos.current_price:.2f}" if pos.current_price else "N/A",
-            "Unrealized P&L": format_pnl(pos.unrealized_pnl),
-            "Stop Loss": f"₹{pos.stop_loss_price:.2f}" if pos.stop_loss_price else "N/A",
-            "Target": f"₹{pos.target_price:.2f}" if pos.target_price else "N/A",
-            "Strategy": pos.strategy.value if pos.strategy else "N/A"
-        })
-    
-    df = pd.DataFrame(pos_data)
-    st.dataframe(df, use_container_width=True)
 
-
-def show_trade_history():
-    """Show trade history."""
-    st.header("Trade History")
-    
-    # Get recent orders from database
-    with storage.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT 
-                timestamp, symbol, side, quantity, order_type,
-                fill_price, slippage, brokerage, status
-            FROM paper_orders
-            WHERE status = 'filled'
-            ORDER BY timestamp DESC
-            LIMIT 50
-        """)
-        
-        orders = cursor.fetchall()
-    
-    if not orders:
-        st.info("No trade history yet")
+    if ss.authed and ss.profile:
+        st.sidebar.success(f"Logged in: {ss.profile.get('user_name') or ss.profile.get('user_id')}")
+        if ss.profile.get("email"):
+            st.sidebar.caption(ss.profile["email"])
+        if st.sidebar.button("Logout", use_container_width=True, key="logout_btn"):
+            try:
+                zerodha_auth.logout()
+            except Exception:
+                pass
+            engine.disable()
+            ss.authed = False
+            ss.profile = None
+            st.rerun()
+        st.sidebar.divider()
+        sidebar_funds()
+        st.sidebar.divider()
+        sidebar_engine_controls()
+        st.sidebar.divider()
+        sidebar_agents()
+        st.sidebar.divider()
+        sidebar_strategies()
         return
-    
-    # Convert to DataFrame
-    trade_data = []
-    for order in orders:
-        trade_data.append({
-            "Time": order['timestamp'],
-            "Symbol": order['symbol'],
-            "Side": order['side'].upper(),
-            "Quantity": order['quantity'],
-            "Type": order['order_type'],
-            "Fill Price": f"₹{order['fill_price']:.2f}",
-            "Slippage": f"₹{order['slippage']:.2f}",
-            "Brokerage": f"₹{order['brokerage']:.2f}"
-        })
-    
-    df = pd.DataFrame(trade_data)
-    st.dataframe(df, use_container_width=True)
+
+    # Not logged in
+    st.sidebar.subheader("Login")
+    st.sidebar.text_input("User ID", placeholder="e.g. RVQ434", key="login_user_id", autocomplete="off")
+    st.sidebar.text_input(
+        "Password (entered on Kite's page)",
+        placeholder="will be filled on Kite",
+        key="login_password",
+        autocomplete="off",
+    )
+    st.sidebar.caption(
+        "Click **Login to Kite** — Zerodha verifies credentials on their own site, "
+        "then redirects back. Your password is never sent through this app."
+    )
+    login_url = zerodha_auth.generate_login_url()
+    st.sidebar.link_button("Login to Kite", login_url, use_container_width=True, type="primary")
 
 
-def show_hitl_approvals():
-    """Show HITL approval panel."""
-    st.header("Human-in-the-Loop Approvals")
-    
-    # Get pending approvals
-    with storage.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT 
-                a.id as approval_id,
-                a.intent_id,
-                a.hitl_reason,
-                a.hitl_status,
-                t.timestamp,
-                t.strategy_id,
-                t.symbol,
-                t.side,
-                t.quantity,
-                t.entry_price,
-                t.stop_loss_price,
-                t.target_price,
-                t.confidence_score,
-                t.rationale,
-                t.expected_risk_rupees
-            FROM approvals a
-            JOIN trade_intents t ON a.intent_id = t.id
-            WHERE a.hitl_required = 1 AND a.hitl_status = 'pending'
-            ORDER BY a.timestamp DESC
-        """)
-        
-        pending = cursor.fetchall()
-    
-    if not pending:
-        st.success("✅ No pending approvals")
+def sidebar_funds() -> None:
+    """Live funds & margins from Zerodha (equity segment)."""
+    st.sidebar.subheader("Zerodha funds (equity)")
+    try:
+        kite = zerodha_auth.get_kite_instance()
+        m = kite.margins(segment="equity") or {}
+        avail = (m.get("available") or {})
+        used = (m.get("utilised") or {})
+
+        cash = float(avail.get("live_balance") or avail.get("cash") or 0.0)
+        net = float(m.get("net") or 0.0)
+        margin_used = float(used.get("debits") or 0.0)
+        m2m = float(used.get("m2m_unrealised") or 0.0) + float(used.get("m2m_realised") or 0.0)
+
+        c1, c2 = st.sidebar.columns(2)
+        c1.metric("Available", f"₹{cash:,.0f}")
+        c2.metric("Net", f"₹{net:,.0f}")
+        c1.metric("Used", f"₹{margin_used:,.0f}")
+        c2.metric("M2M", f"₹{m2m:+,.0f}")
+        if st.sidebar.button("↻ Refresh funds", use_container_width=True, key="refresh_funds_btn"):
+            st.rerun()
+    except Exception as e:
+        st.sidebar.warning(f"Funds unavailable: {e}")
+
+
+def sidebar_engine_controls() -> None:
+    st.sidebar.subheader("Bot controls")
+    snap = engine.snapshot()
+
+    try:
+        if snap.enabled:
+            if st.sidebar.button("⏸ Disable bot", use_container_width=True, key="disable_bot_btn"):
+                log.info("UI: Disable bot clicked")
+                engine.disable()
+                if ss.agents_running:
+                    orchestrator.shutdown()
+                    ss.agents_running = False
+        else:
+            if st.sidebar.button(
+                "▶️ Enable bot", type="primary", use_container_width=True, key="enable_bot_btn"
+            ):
+                log.info("UI: Enable bot clicked")
+                engine.enable()
+                if not ss.agents_running:
+                    orchestrator.start_all()
+                    ss.agents_running = True
+    except Exception as e:
+        log.exception("Bot toggle failed")
+        st.sidebar.error(f"Toggle failed: {e}")
+
+    # Auto-execute safety toggle (only meaningful when enabled)
+    try:
+        new_auto = st.sidebar.checkbox(
+            "Auto-execute orders",
+            value=snap.auto_execute,
+            key="auto_exec_checkbox",
+            help="When ON, the engine places top candidates automatically during the active phase. "
+                 "When OFF, you place each trade manually from Signals.",
+        )
+        if new_auto != snap.auto_execute:
+            engine.set_auto_execute(new_auto)
+            orchestrator.set_auto_execute(new_auto)
+        if new_auto:
+            st.sidebar.warning("⚠️ Auto-execute is ON — engine will place real orders.")
+        else:
+            st.sidebar.caption("Auto-execute OFF — engine scans only; you place manually.")
+    except Exception as e:
+        log.exception("Auto-execute toggle failed")
+        st.sidebar.error(f"Auto-exec toggle failed: {e}")
+
+
+AGENT_NAMES = [
+    "agent01_data", "agent02_feature", "agent03_trend", "agent04_breakout",
+    "agent05_pullback", "agent06_decision", "agent07_risk", "agent08_execution",
+    "agent09_sentiment", "agent10_ml_prediction", "agent11_monitoring", "agent12_portfolio",
+]
+
+
+@st.fragment(run_every="1s")
+def _agents_fragment() -> None:
+    """Inner fragment — must use st.* (not st.sidebar.*) per Streamlit's API."""
+    st.subheader("Agent system (12)")
+    if not ss.agents_running:
+        st.caption("Idle — Enable bot to start the 12-agent loop.")
         return
-    
-    st.warning(f"⏳ {len(pending)} trade(s) awaiting approval")
-    
-    for approval in pending:
-        with st.expander(f"📋 {approval['symbol']} - {approval['strategy_id']} ({approval['side'].upper()})"):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.write("**Trade Details:**")
-                st.write(f"- Symbol: {approval['symbol']}")
-                st.write(f"- Strategy: {approval['strategy_id']}")
-                st.write(f"- Side: {approval['side'].upper()}")
-                st.write(f"- Quantity: {approval['quantity']}")
-                st.write(f"- Entry: ₹{approval['entry_price']:.2f}" if approval['entry_price'] else "MARKET")
-                st.write(f"- Stop Loss: ₹{approval['stop_loss_price']:.2f}")
-                st.write(f"- Target: ₹{approval['target_price']:.2f}" if approval['target_price'] else "N/A")
-            
-            with col2:
-                st.write("**Risk & Confidence:**")
-                st.write(f"- Confidence: {approval['confidence_score']:.1%}")
-                st.write(f"- Expected Risk: ₹{approval['expected_risk_rupees']:.2f}")
-                st.write(f"- HITL Reason: {approval['hitl_reason']}")
-            
-            st.write("**Rationale:**")
-            st.info(approval['rationale'])
-            
-            # Approval buttons
-            col_approve, col_reject = st.columns(2)
-            
-            with col_approve:
-                if st.button(f"✅ Approve", key=f"approve_{approval['approval_id']}"):
-                    # Update approval status
-                    with storage.get_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "UPDATE approvals SET hitl_status = 'approved' WHERE id = ?",
-                            (approval['approval_id'],)
-                        )
-                        cursor.execute(
-                            "UPDATE trade_intents SET status = 'approved' WHERE id = ?",
-                            (approval['intent_id'],)
-                        )
-                    
-                    st.success("Trade approved!")
-                    time.sleep(1)
-                    st.rerun()
-            
-            with col_reject:
-                if st.button(f"❌ Reject", key=f"reject_{approval['approval_id']}"):
-                    # Update approval status
-                    with storage.get_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "UPDATE approvals SET hitl_status = 'rejected' WHERE id = ?",
-                            (approval['approval_id'],)
-                        )
-                        cursor.execute(
-                            "UPDATE trade_intents SET status = 'rejected' WHERE id = ?",
-                            (approval['intent_id'],)
-                        )
-                    
-                    st.success("Trade rejected")
-                    time.sleep(1)
-                    st.rerun()
+    health = orchestrator.bus.get("health") or {}
+    ok = sum(1 for v in health.values() if v.get("status") == "OK")
+    st.caption(f"{ok}/{len(AGENT_NAMES)} OK · animations show live ticks")
+
+    for name in AGENT_NAMES:
+        last = orchestrator.bus.get(f"last_result:{name}")
+        recent = bool(last and (datetime.now() - last.ts).total_seconds() <= 2.0)
+        info = health.get(name) or {}
+        status = info.get("status")
+        if recent:
+            dot = '<span class="pulse-dot"></span>'
+        elif status == "OK":
+            dot = '<span class="pulse-dot" style="animation: none; opacity: 0.7;"></span>'
+        elif status == "DEGRADED":
+            dot = '<span class="warn-dot"></span>'
+        else:
+            dot = '<span class="idle-dot"></span>'
+        stale = info.get("stale_s")
+        suffix = f"<span style='color:#888'> · {stale:.1f}s</span>" if isinstance(stale, (int, float)) else ""
+        card_link = f"<a href='http://127.0.0.1:8000/agents/{name}/card.json' target='_blank' style='color:#3b82f6; text-decoration:none;'>card</a>"
+        st.markdown(
+            f"<div class='agent-line'>{dot}{name}{suffix} · {card_link}</div>",
+            unsafe_allow_html=True,
+        )
+
+    # Risk alerts from agent07
+    alerts = orchestrator.bus.get("risk_alerts") or []
+    if alerts:
+        st.markdown("---")
+        st.markdown("**⚠️ Risk alerts (agent07)**")
+        for a in alerts[:6]:
+            sev = a.get("severity", "?")
+            colour = "#ef4444" if sev == "high" else "#f59e0b"
+            st.markdown(
+                f"<div class='agent-line' style='color:{colour}'>"
+                f"• {a.get('symbol', '—')}: {a.get('reason', '')}</div>",
+                unsafe_allow_html=True,
+            )
 
 
-def show_settings():
-    """Show settings and configuration."""
-    st.header("Settings & Configuration")
-    
-    st.subheader("Trading Parameters")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.write(f"**Daily Capital:** {format_price(settings.DAILY_CAPITAL)}")
-        st.write(f"**Max Daily Loss:** {format_price(settings.MAX_DAILY_LOSS)}")
-        st.write(f"**Max Trades/Day:** {settings.MAX_TRADES_PER_DAY}")
-        st.write(f"**Per-Trade Max Loss %:** {settings.PER_TRADE_MAX_LOSS_PERCENT}%")
-    
-    with col2:
-        st.write(f"**Trading Mode:** {'PAPER' if not settings.ENABLE_LIVE_TRADING else 'LIVE ⚠️'}")
-        st.write(f"**HITL First N Trades:** {settings.REQUIRE_HITL_FIRST_N_TRADES}")
-        st.write(f"**HITL Confidence Threshold:** {settings.HITL_CONFIDENCE_THRESHOLD}")
-        st.write(f"**Strategy Switch Cooldown:** {settings.STRATEGY_SWITCH_COOLDOWN_MINUTES} min")
-    
-    st.subheader("LLM Configuration")
-    st.write(f"**Provider:** {settings.LLM_PROVIDER.upper()}")
-    
-    if settings.LLM_PROVIDER == "google":
-        st.write(f"**Model:** {settings.GOOGLE_MODEL}")
-        masked_key = f"{settings.GOOGLE_API_KEY[:4]}...{settings.GOOGLE_API_KEY[-4:]}" if settings.GOOGLE_API_KEY else "Not Set"
-        st.write(f"**API Key:** {masked_key}")
+def sidebar_agents() -> None:
+    with st.sidebar:
+        _agents_fragment()
+
+
+def sidebar_strategies() -> None:
+    st.sidebar.subheader("Strategies")
+    for name in list(ss.strategy_enabled.keys()):
+        ss.strategy_enabled[name] = st.sidebar.checkbox(
+            name, value=ss.strategy_enabled[name], key=f"strat_{name}"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Top status strip
+# ─────────────────────────────────────────────────────────────────────────────
+def minutes_to_square_off() -> int | None:
+    now = ist_now()
+    if not is_nse_bse_trading_day(now.date()):
+        return None
+    from datetime import datetime as _dt, time as _t
+    eod = _dt.combine(now.date(), _t(15, 0), tzinfo=IST)
+    delta = eod - now
+    if delta.total_seconds() <= 0:
+        return 0
+    return int(delta.total_seconds() // 60)
+
+
+def top_status_strip(capital: float, snap) -> None:
+    mkt_ok, mkt_msg = can_place_nse_bse_equity_trade()
+    re: RiskEngine = engine.risk_engine
+
+    c = st.columns([1.4, 1.4, 1.0, 1.0, 1.0, 1.2, 1.0])
+
+    # Bot + phase
+    if snap.enabled:
+        if snap.armed:
+            c[0].markdown("🟢 **BOT ENABLED · ARMED**")
+        else:
+            c[0].markdown("🟡 **BOT ENABLED · IDLE**")
     else:
-        st.write(f"**Base URL:** {settings.OLLAMA_BASE_URL}")
-        st.write(f"**Model:** {settings.OLLAMA_MODEL}")
-    
-    st.subheader("Trading Symbols")
-    # Show symbols from settings which we updated
-    st.write(", ".join(settings.get_trading_symbols()))
-    
-    # Actions
-    st.subheader("Actions")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("🔄 Reset Daily State"):
-            from app.agents.risk_policy import risk_policy
-            risk_policy.reset_daily_state()
-            st.success("Daily state reset!")
-            time.sleep(1)
-            st.rerun()
-    
-    with col2:
-        if st.button("🚨 Trigger SAFE_MODE"):
-            from app.agents.risk_policy import risk_policy
-            risk_policy.trigger_safe_mode("Manual trigger from dashboard")
-            st.warning("SAFE_MODE activated!")
-            time.sleep(1)
-            st.rerun()
-    
-    with col3:
-        if st.button("📊 Flatten All Positions"):
-            from app.agents.execution_paper import execution_paper
-            execution_paper.flatten_all_positions("Manual flatten from dashboard")
-            st.info("All positions flattened")
-            time.sleep(1)
-            st.rerun()
+        c[0].markdown("⚪ **BOT DISABLED**")
+    c[0].caption(snap.phase_label or "—")
+
+    # Market + last tick
+    if mkt_ok:
+        c[1].markdown("🟢 **MARKET OPEN**")
+    elif is_nse_bse_trading_day():
+        c[1].markdown("🟠 **OFF-HOURS**")
+    else:
+        c[1].markdown("🔴 **HOLIDAY/WKND**")
+    c[1].caption(f"Last tick: {snap.last_tick or '—'}")
+
+    # Equity + PnL
+    c[2].metric("Equity", f"₹{capital:,.0f}", delta=f"₹{re.daily_stats.total_pnl:+,.0f}")
+
+    # Trade slots
+    used = re.daily_stats.total_trades
+    cap_trades = re.config.max_trades_per_day
+    c[3].metric("Trades", f"{used}/{cap_trades}")
+    c[3].progress(min(1.0, used / cap_trades if cap_trades else 0), text=" ")
+
+    # Risk used
+    loss_used = max(0.0, -re.daily_stats.total_pnl)
+    loss_cap = re.config.max_loss_per_day
+    pct = min(1.0, loss_used / loss_cap if loss_cap else 0)
+    c[4].metric("Risk used", f"{pct * 100:.0f}%")
+    c[4].progress(pct, text=" ")
+
+    # Square-off countdown
+    mins = minutes_to_square_off()
+    if mins is None:
+        c[5].metric("Square-off", "—")
+    elif mins == 0:
+        c[5].metric("Square-off", "NOW")
+    else:
+        c[5].metric("Square-off in", f"{mins} min")
+
+    # KILL ALL
+    if c[6].button(
+        "🔥 KILL ALL",
+        key="kill_all_btn",
+        use_container_width=True,
+        help="Emergency: disable bot + cancel all open Kite orders",
+    ):
+        with st.spinner("Cancelling all open orders…"):
+            result = engine.kill_all()
+        st.toast(
+            f"KILL ALL — cancelled {result['cancelled']}, failures {len(result['failures'])}",
+            icon="🔥",
+        )
+        st.rerun()
 
 
-if __name__ == "__main__":
-    main()
+# ─────────────────────────────────────────────────────────────────────────────
+# Pre-trade validation
+# ─────────────────────────────────────────────────────────────────────────────
+def validate_trade(entry: float, sl: float, target: float, qty: int, capital: float, strategy: str):
+    if not ss.strategy_enabled.get(strategy, False):
+        return False, f"Strategy '{strategy}' disabled in sidebar."
+    if qty <= 0:
+        return False, "Quantity must be > 0."
+    if min(entry, sl, target) <= 0:
+        return False, "Entry / SL / target must be positive."
+    sl_pct = (entry - sl) / entry * 100
+    tgt_pct = (target - entry) / entry * 100
+    if sl_pct <= 0:
+        return False, f"SL must be below entry (SL ₹{sl:.2f}, entry ₹{entry:.2f})."
+    if sl_pct >= 10.0:
+        return False, f"SL distance {sl_pct:.2f}% violates hard cap (<10%)."
+    if tgt_pct < MIN_TARGET_PCT - 1e-6:
+        return False, f"Target {tgt_pct:.2f}% below {MIN_TARGET_PCT:.1f}% floor."
+    re: RiskEngine = engine.risk_engine
+    pos_cap_inr = capital * (re.config.max_position_size_percent / 100.0)
+    notional = entry * qty
+    if notional > pos_cap_inr:
+        return False, (
+            f"Position ₹{notional:,.0f} > cap ₹{pos_cap_inr:,.0f} "
+            f"({re.config.max_position_size_percent:.0f}% of capital)."
+        )
+    ok_mkt, msg_mkt = can_place_nse_bse_equity_trade()
+    if not ok_mkt:
+        return False, msg_mkt
+    ok_risk, msg_risk = re.can_place_trade(notional, assumed_sl_pct=sl_pct / 100.0)
+    if not ok_risk:
+        return False, msg_risk
+    return True, "OK"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Strategy cards
+# ─────────────────────────────────────────────────────────────────────────────
+def strategy_cards(snap) -> None:
+    st.subheader("Strategies")
+    counts = {k: 0 for k in ss.strategy_enabled.keys()}
+    for d in snap.candidates or []:
+        if d.strategy in counts:
+            counts[d.strategy] += 1
+    descriptions = {
+        "Opening Range Breakout": "Breakout above first-15m high with volume + NIFTY bias",
+        "VWAP Pullback": "Holding/discounting VWAP with bullish candle + volume",
+        "Momentum": "RSI > 60, price > 20MA, volume > 2× avg, RS vs NIFTY",
+    }
+    cols = st.columns(3)
+    for i, name in enumerate(["Opening Range Breakout", "VWAP Pullback", "Momentum"]):
+        with cols[i].container(border=True):
+            enabled = ss.strategy_enabled.get(name, False)
+            badge = "🟢 ON" if enabled else "⚪ OFF"
+            st.markdown(f"**{name}** &nbsp;&nbsp;{badge}")
+            st.caption(descriptions[name])
+            st.metric("Signals (latest scan)", counts[name])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Panels
+# ─────────────────────────────────────────────────────────────────────────────
+def safe(name: str, fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except Exception as e:
+        log.exception(f"section '{name}' failed")
+        st.error(f"Section **{name}** failed: {e}")
+        with st.expander("stack trace", expanded=False):
+            st.code(traceback.format_exc())
+        return None
+
+
+def positions_panel() -> None:
+    st.subheader("Open positions (live)")
+    try:
+        b = LiveBroker()
+        portfolio = b.get_portfolio()
+    except Exception as e:
+        st.warning(f"Could not fetch positions: {e}")
+        return
+    if not portfolio:
+        st.caption("No open positions.")
+        return
+    rows = [
+        {
+            "Symbol": getattr(p, "symbol", ""),
+            "Qty": getattr(p, "quantity", 0),
+            "Avg": round(getattr(p, "avg_price", 0.0), 2),
+            "LTP": round(getattr(p, "ltp", 0.0), 2),
+            "Unrealized PnL": round(
+                (getattr(p, "ltp", 0.0) - getattr(p, "avg_price", 0.0))
+                * getattr(p, "quantity", 0),
+                2,
+            ),
+        }
+        for p in portfolio
+    ]
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+
+def order_book_panel() -> None:
+    st.subheader("Order book (live)")
+    try:
+        b = LiveBroker()
+        orders = b.orders
+    except Exception as e:
+        st.warning(f"Could not fetch order book: {e}")
+        return
+    if not orders:
+        st.caption("No orders today.")
+        return
+    rows = [
+        {
+            "Order ID": o.order_id,
+            "Symbol": o.symbol,
+            "Side": o.transaction_type,
+            "Qty": o.quantity,
+            "Price": o.price,
+            "Status": o.status,
+            "Time": str(o.timestamp),
+        }
+        for o in orders
+    ]
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+
+def signals_panel(capital: float, snap) -> None:
+    st.subheader("Signals (engine candidates)")
+    re: RiskEngine = engine.risk_engine
+    slots = max(0, re.config.max_trades_per_day - re.daily_stats.total_trades)
+    st.caption(
+        f"Slots left: **{slots}/{re.config.max_trades_per_day}** · "
+        f"SL cap <10% · Target floor ≥{MIN_TARGET_PCT:g}% · "
+        + (f"Last scan **{snap.last_scan_at}** IST" if snap.last_scan_at else "No scan yet")
+    )
+    candidates = snap.candidates or []
+    if not candidates:
+        if not snap.enabled:
+            st.info("Bot is disabled. Press **Enable bot** in the sidebar to start the auto loop.")
+        elif snap.phase == PHASE_ACTIVE:
+            st.info("Active phase — no candidates passed the last scan. Engine will retry on the next tick.")
+        else:
+            st.info(f"Phase: {snap.phase_label}. Engine scans candidates only during the active phase (10:15–14:45 IST).")
+        return
+
+    visible = [d for d in candidates if ss.strategy_enabled.get(d.strategy, False)][:5]
+    if not visible:
+        st.caption("Engine has candidates, but all matching strategies are disabled in the sidebar.")
+        return
+
+    for d in visible:
+        with st.container(border=True):
+            top = st.columns([2, 1, 1, 1, 1, 1])
+            top[0].markdown(f"**{d.stock}** · {d.strategy}")
+            top[1].metric("Entry", f"₹{d.entry_price:.2f}")
+            top[2].metric(
+                "SL", f"₹{d.stop_loss:.2f}",
+                delta=f"-{d.risk_pct:.2f}%",
+                delta_color="inverse",
+            )
+            tgt_pct = (d.target / d.entry_price - 1) * 100
+            top[3].metric("Target", f"₹{d.target:.2f}", delta=f"+{tgt_pct:.2f}%")
+            top[4].metric("Qty", d.quantity)
+            top[5].metric("Confidence", f"{d.confidence:.0f}")
+
+            with st.expander("Plan & checks"):
+                st.markdown(d.planning or "_no plan_")
+                for pt in d.hitl_points:
+                    st.markdown(f"- {pt}")
+
+            ok_v, msg_v = validate_trade(
+                d.entry_price, d.stop_loss, d.target, d.quantity, capital, d.strategy
+            )
+            ac = st.columns([2, 1, 1])
+            ac[0].caption(("✅ " if ok_v else "⛔ ") + msg_v)
+            confirmed = ac[1].checkbox("I checked it", key=f"chk_{d.stock}")
+            disabled = (not snap.enabled) or (not ok_v) or (not confirmed)
+            help_text = "Enable bot first" if not snap.enabled else None
+            if ac[2].button(
+                "Place bracket",
+                key=f"buy_{d.stock}",
+                type="primary",
+                disabled=disabled,
+                use_container_width=True,
+                help=help_text,
+            ):
+                place_bracket_manually(d)
+
+
+def place_bracket_manually(d) -> None:
+    ok, msg = can_place_nse_bse_equity_trade()
+    if not ok:
+        st.error(f"Market gate: {msg}")
+        return
+    try:
+        b = LiveBroker()
+        order = b.place_bracket_buy(
+            symbol=d.stock,
+            quantity=int(d.quantity),
+            limit_price=float(d.entry_price),
+            stop_loss_price=float(d.stop_loss),
+            target_price=float(d.target),
+        )
+        engine.risk_engine.daily_stats.total_trades += 1
+        oid = getattr(order, "order_id", order)
+        st.success(f"✅ Live order sent: {oid}")
+    except Exception as e:
+        st.error(f"Order failed: {e}")
+
+
+def activity_feed(snap) -> None:
+    st.subheader("Activity (engine)")
+    if not snap.activity:
+        st.caption("No events yet.")
+        return
+    icons = {"info": "·", "warn": "⚠️", "error": "🛑"}
+    for ev in reversed(snap.activity[-15:]):
+        st.markdown(
+            f"<span style='color:#888'>{ev['ts']}</span>  "
+            f"{icons.get(ev['level'], '·')}  {ev['msg']}",
+            unsafe_allow_html=True,
+        )
+
+
+def guardrails_panel() -> None:
+    re: RiskEngine = engine.risk_engine
+    c = re.config
+    st.markdown(
+        f"""
+**Daily flow (auto-managed by the engine)**
+- `< 9:15` Pre-market — idle
+- `9:15–9:30` Setup — auto-armed, no trades
+- `9:30–10:15` Noisy open — observation only
+- `10:15–14:45` Active — scans every 5s; auto-executes if toggle is ON
+- `14:45–15:30` Closing — no new entries; broker MIS squares off
+
+**Hard rules (every order)**
+- SL distance **< 10%** (engine caps at {MAX_STOP_LOSS_PCT:g}%)
+- Target **≥ {MIN_TARGET_PCT:g}%**
+- Position size **≤ {c.max_position_size_percent:.0f}%** of capital
+- Max open positions: **{c.max_open_positions}**
+- Max trades/day: **{c.max_trades_per_day}**
+- Max daily loss: **₹{c.max_loss_per_day:.0f}** (auto-halt)
+- Halt on consecutive losses: **{c.max_consecutive_losses}**
+- Min capital threshold: **₹{c.min_capital_threshold:.0f}**
+
+**Kill switches**
+- **Disable bot** — armed/auto-execute off; open positions untouched
+- **🔥 KILL ALL** — disarms + cancels every open Kite order in one click
+        """
+    )
+
+
+def dashboard() -> None:
+    snap = engine.snapshot()
+    cap = session_capital()
+    safe("top_strip", top_status_strip, cap, snap)
+    st.divider()
+    safe("strategy_cards", strategy_cards, snap)
+    st.divider()
+    left, right = st.columns([3, 2])
+    with left:
+        tabs = st.tabs(["Signals", "Order book", "Guardrails"])
+        with tabs[0]:
+            safe("signals", signals_panel, cap, snap)
+        with tabs[1]:
+            safe("order_book", order_book_panel)
+        with tabs[2]:
+            safe("guardrails", guardrails_panel)
+    with right:
+        safe("positions", positions_panel)
+        safe("activity", activity_feed, snap)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Render
+# ─────────────────────────────────────────────────────────────────────────────
+st.title("Zerodha Intraday Bot")
+st.caption(f"Real-money · {datetime.now().strftime('%H:%M:%S')}")
+
+try:
+    sidebar()
+    if ss.authed:
+        dashboard()
+    else:
+        st.info(
+            f"Log in via the **left pane**. Hard rules: SL <10%, Target ≥{MIN_TARGET_PCT:g}%, "
+            f"NSE/BSE 9:15–15:30 IST only, max {MAX_TRADES_PER_DAY} trades/day."
+        )
+        st.caption(f"Kite redirect URL: `{settings.KITE_REDIRECT_URL}`")
+except Exception as e:
+    st.error(f"Render failed: {e}")
+    st.code(traceback.format_exc())

@@ -1,15 +1,14 @@
-import streamlit as st
 import sys
-import os
 from pathlib import Path
 
-# Add the current directory to the system path to allow importing modules
+# Use macOS / Windows system trust store so corporate MITM SSL proxies' CA certs
+# (already installed in the OS keychain) are trusted. Must run before any HTTPS call.
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
+
 sys.path.append(str(Path(__file__).parent))
 
-# Simple device detection (very basic) 
-# Usually, mobile users have narrower screen widths on initial load
-# But for Streamlit, we can offer a choice or just keep V4 as the default for mobile deployment
-# For now, let's keep it clean: 
-# Point to V4 for mobile-optimized deployment on Streamlit Cloud.
-
-import ui.dashboard_v4
+import ui.dashboard  # noqa: F401  — 12-agent proactive Zerodha intraday system

@@ -4,13 +4,14 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 
 from app.core.zerodha_auth import zerodha_auth
-from app.core.zerodha_auth import zerodha_auth
 from app.core.utils import logger
 from app.core.execution_algo import ExecutionAlgo
 
 # Re-use Paper data classes for compatibility where possible, 
 # or map Kite responses to them.
 from app.core.paper_broker import PaperOrder, PaperPosition
+from app.core.market_calendar import can_place_nse_bse_equity_trade
+
 
 class LiveBroker:
     def __init__(self):
@@ -83,6 +84,9 @@ class LiveBroker:
 
         try:
             self.kite = zerodha_auth.get_kite_instance()
+            ok, msg = can_place_nse_bse_equity_trade()
+            if not ok:
+                raise RuntimeError(msg)
             
             variation = self.kite.VARIETY_REGULAR
             exchange = self.kite.EXCHANGE_NSE
@@ -119,6 +123,53 @@ class LiveBroker:
             
         except Exception as e:
             logger.error(f"Live Order placement failed: {e}")
+            raise e
+
+    def place_bracket_buy(
+        self,
+        symbol: str,
+        quantity: int,
+        limit_price: float,
+        stop_loss_price: float,
+        target_price: float,
+    ) -> Optional[PaperOrder]:
+        """
+        MIS bracket order: limit entry with fixed target and stop (absolute ₹ move per share).
+        """
+        try:
+            self.kite = zerodha_auth.get_kite_instance()
+            ok, msg = can_place_nse_bse_equity_trade()
+            if not ok:
+                raise RuntimeError(msg)
+            sq = round(max(target_price - limit_price, 0.05), 2)
+            sl = round(max(limit_price - stop_loss_price, 0.05), 2)
+            order_id = self.kite.place_order(
+                variety=self.kite.VARIETY_BO,
+                exchange=self.kite.EXCHANGE_NSE,
+                tradingsymbol=symbol,
+                transaction_type=self.kite.TRANSACTION_TYPE_BUY,
+                quantity=int(quantity),
+                product=self.kite.PRODUCT_MIS,
+                order_type=self.kite.ORDER_TYPE_LIMIT,
+                price=round(limit_price, 2),
+                validity=self.kite.VALIDITY_DAY,
+                squareoff=sq,
+                stoploss=sl,
+                trailing_stoploss=0,
+            )
+            logger.info(f"Live BRACKET BUY {symbol} oid={order_id} sq={sq} sl={sl}")
+            return PaperOrder(
+                order_id=str(order_id),
+                symbol=symbol,
+                transaction_type="BUY",
+                quantity=quantity,
+                price=limit_price,
+                status="BRACKET_PENDING",
+                timestamp=datetime.datetime.now(),
+                brokerage_est=0.0,
+            )
+        except Exception as e:
+            logger.error(f"Bracket order failed {symbol}: {e}")
             raise e
 
     def get_portfolio(self) -> List[PaperPosition]:

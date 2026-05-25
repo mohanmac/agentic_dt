@@ -1,15 +1,25 @@
 """
 FastAPI server for Zerodha authentication and status endpoints.
 """
+import os
+
+# Trust the OS keychain so corporate MITM TLS proxies work (must run before any HTTPS).
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
+
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from app.core.zerodha_auth import zerodha_auth
 from app.core.utils import logger, log_event
 from app.core.config import settings
+from app.agents.registry import AGENT_BY_NAME, AGENT_CLASSES, system_card
 
 
 # Create FastAPI app
@@ -40,9 +50,45 @@ async def root():
             "login_url": "/auth/login_url",
             "callback": "/callback",
             "status": "/status",
-            "logout": "/auth/logout"
+            "logout": "/auth/logout",
+            "agents_index": "/agents",
+            "system_card": "/agents/system.json",
         }
     }
+
+
+@app.get("/agents")
+async def agents_index():
+    """List the 12 agents with one-line capability + card URL."""
+    return {
+        "count": len(AGENT_CLASSES),
+        "system_card": "/agents/system.json",
+        "agents": [
+            {
+                "name": cls.name,
+                "description": cls.description,
+                "uses_llm": cls.uses_llm,
+                "interval_seconds": cls.interval_seconds,
+                "card_url": f"/agents/{cls.name}/card.json",
+            }
+            for cls in AGENT_CLASSES
+        ],
+    }
+
+
+@app.get("/agents/system.json")
+async def agents_system_card():
+    """Top-level card describing the whole 12-agent trading system."""
+    return system_card()
+
+
+@app.get("/agents/{name}/card.json")
+async def agent_card(name: str):
+    """Full A2A-style card for a single agent."""
+    cls = AGENT_BY_NAME.get(name)
+    if cls is None:
+        raise HTTPException(status_code=404, detail=f"unknown agent: {name}")
+    return cls.card()
 
 
 @app.get("/auth/login_url")
@@ -74,37 +120,65 @@ async def get_login_url():
 
 
 @app.get("/callback")
-async def auth_callback(request: Request, request_token: str = None, status: str = None):
+async def auth_callback(
+    request: Request,
+    request_token: Optional[str] = None,
+    status: Optional[str] = None,
+    format: Optional[str] = None,
+):
     """
-    OAuth callback endpoint - receives request_token from Zerodha.
-    
-    Args:
-        request_token: Token from Zerodha OAuth
-        status: Status from Zerodha (success/error)
-    
-    Returns:
-        JSON with authentication result
+    OAuth callback from Zerodha (must match KITE_REDIRECT_URL).
+
+    Default: 302-redirect to the Streamlit dashboard with the ``request_token`` attached.
+    The Streamlit app auto-exchanges it for an access token on first render.
+
+    ``?format=json`` — legacy: exchange token here and return JSON (kept for tests).
     """
-    # Check if authentication was successful
+    wants_json = (format or "").lower() == "json"
+    streamlit_port = os.environ.get("STREAMLIT_PORT", "8501")
+    # Use 'localhost' (not 127.0.0.1) so Streamlit's XSRF/CORS check matches
+    # the host the browser sees during normal browsing.
+    streamlit_host = os.environ.get("STREAMLIT_HOST", "localhost")
+    streamlit_base = f"http://{streamlit_host}:{streamlit_port}"
+
     if status != "success" or not request_token:
-        log_event("auth_callback_failed", {
-            "status": status,
-            "has_token": bool(request_token)
-        }, level="ERROR")
-        
-        return JSONResponse(
-            status_code=400,
-            content={
-                "success": False,
-                "message": "Authentication failed or was cancelled",
-                "status": status
-            }
+        log_event(
+            "auth_callback_failed",
+            {"status": status, "has_token": bool(request_token)},
+            level="ERROR",
         )
-    
+        if wants_json:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "Authentication failed or was cancelled",
+                    "status": status,
+                },
+            )
+        return RedirectResponse(url=f"{streamlit_base}/?auth_error=cancelled", status_code=302)
+
+    # Exchange the request_token here (single-use, expires fast) and persist the access_token.
+    # Streamlit then just reads the saved token — no token passing in URL.
     try:
-        # Exchange request_token for access_token
         session_data = zerodha_auth.exchange_request_token(request_token)
-        
+        log_event(
+            "auth_callback_token_exchanged",
+            {"user_id": session_data.get("user_id"), "user_name": session_data.get("user_name")},
+        )
+    except Exception as e:
+        logger.error(f"Token exchange in /callback failed: {e}", exc_info=True)
+        if wants_json:
+            return JSONResponse(
+                status_code=500,
+                content={"success": False, "message": f"Failed to complete authentication: {e}"},
+            )
+        from urllib.parse import quote
+        return RedirectResponse(
+            url=f"{streamlit_base}/?auth_error={quote(str(e))}", status_code=302
+        )
+
+    if wants_json:
         return {
             "success": True,
             "message": "Authentication successful!",
@@ -112,21 +186,11 @@ async def auth_callback(request: Request, request_token: str = None, status: str
                 "user_id": session_data.get("user_id"),
                 "user_name": session_data.get("user_name"),
                 "email": session_data.get("email"),
-                "user_type": session_data.get("user_type")
+                "user_type": session_data.get("user_type"),
             },
-            "note": "Access token has been saved securely. You can now start trading."
         }
-    
-    except Exception as e:
-        logger.error(f"Error in auth callback: {e}", exc_info=True)
-        
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "message": f"Failed to complete authentication: {str(e)}"
-            }
-        )
+
+    return RedirectResponse(url=f"{streamlit_base}/?auth=ok", status_code=302)
 
 
 @app.get("/status")

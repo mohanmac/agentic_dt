@@ -69,6 +69,15 @@ class RiskEngine:
         self.daily_stats.total_pnl += pnl
         self.daily_stats.current_capital += pnl  # Update available capital
         
+        if pnl < 0:
+            self.daily_stats.consecutive_losses += 1
+        elif pnl > 0:
+            self.daily_stats.consecutive_losses = 0
+        
+        if self.daily_stats.consecutive_losses >= self.config.max_consecutive_losses:
+            self.daily_stats.is_trading_halted = True
+            return False, f"Halted after {self.config.max_consecutive_losses} consecutive losses."
+        
         # Check if we hit max loss
         if self.daily_stats.total_pnl <= -self.config.max_loss_per_day:
             self.daily_stats.is_trading_halted = True
@@ -81,9 +90,10 @@ class RiskEngine:
             
         return True, "OK"
 
-    def can_place_trade(self, estimated_cost: float) -> tuple[bool, str]:
+    def can_place_trade(self, estimated_cost: float, assumed_sl_pct: float = 0.10) -> tuple[bool, str]:
         """
         Validate if a new trade can be placed based on hard guardrails.
+        assumed_sl_pct: fraction of notional used as worst-case loss proxy (use 0.01 for ~1% intraday SL).
         """
         # 1. Check Daily Halt
         if self.daily_stats.is_trading_halted:
@@ -98,7 +108,7 @@ class RiskEngine:
             return False, f"Order value ₹{estimated_cost} exceeds limit ₹{self.config.max_capital_per_trade}."
         
         # 4. Check Per-Trade Max Loss (Absolute)
-        estimated_loss = estimated_cost * 0.10  # Assume 10% max stop loss
+        estimated_loss = estimated_cost * assumed_sl_pct
         if estimated_loss > self.config.per_trade_max_loss_absolute:
             return False, f"Potential loss ₹{estimated_loss:.2f} exceeds per-trade limit ₹{self.config.per_trade_max_loss_absolute}."
         
