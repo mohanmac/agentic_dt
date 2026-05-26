@@ -398,7 +398,7 @@ def sidebar_agents() -> None:
     if ss.agents_running:
         try:
             from streamlit_autorefresh import st_autorefresh
-            st_autorefresh(interval=2000, key="agent_panel_autorefresh", limit=None)
+            st_autorefresh(interval=15000, key="agent_panel_autorefresh", limit=None)
         except Exception:
             pass  # if the component is missing, panel still works on manual refresh
     with st.sidebar:
