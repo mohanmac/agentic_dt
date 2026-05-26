@@ -8,7 +8,6 @@ numpy>=1.26.0
 requests>=2.31.0
 truststore>=0.9.0
 streamlit>=1.37.0
-streamlit-autorefresh>=1.0.1
 python-dotenv>=1.0.0
 pytz
 plotly>=5.18.0

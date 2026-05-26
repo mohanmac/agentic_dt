@@ -393,14 +393,6 @@ def _agents_fragment() -> None:
 
 
 def sidebar_agents() -> None:
-    # Auto-refresh only while the 12-agent loop is actually running.
-    # Triggers a full script rerun every 2s; cloud-safe (unlike st.fragment+run_every).
-    if ss.agents_running:
-        try:
-            from streamlit_autorefresh import st_autorefresh
-            st_autorefresh(interval=15000, key="agent_panel_autorefresh", limit=None)
-        except Exception:
-            pass  # if the component is missing, panel still works on manual refresh
     with st.sidebar:
         _agents_fragment()
 
