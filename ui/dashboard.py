@@ -129,10 +129,19 @@ def bootstrap_auth() -> None:
         st.sidebar.warning(f"Auth check failed: {e}")
 
 
-bootstrap_auth()
+try:
+    bootstrap_auth()
+except Exception as e:
+    st.error(f"bootstrap_auth crashed: {e}")
+    st.code(traceback.format_exc())
 
 # Start engine singleton (idle until Enable bot is clicked)
-engine = TradingEngine()
+try:
+    engine = TradingEngine()
+except Exception as e:
+    st.error(f"TradingEngine() crashed: {e}")
+    st.code(traceback.format_exc())
+    st.stop()
 
 
 @st.cache_resource
@@ -141,7 +150,12 @@ def get_orchestrator() -> Orchestrator:
     return Orchestrator()
 
 
-orchestrator = get_orchestrator()
+try:
+    orchestrator = get_orchestrator()
+except Exception as e:
+    st.error(f"Orchestrator() crashed at module load: {e}")
+    st.code(traceback.format_exc())
+    st.stop()
 ss.setdefault("agents_running", False)
 
 
