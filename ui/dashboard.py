@@ -36,11 +36,28 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ─── Cloud diagnostic checkpoints — REMOVE once cloud renders correctly ─────
+# These print at the top of the page so we can see which line the script
+# reaches before failing silently.
+_CHECKPOINTS: list[str] = []
+
+def _ck(label: str) -> None:
+    _CHECKPOINTS.append(label)
+
+_ck("01: set_page_config done")
+st.write("**🔬 Diagnostic checkpoints** — last one printed is where execution stopped.")
+_diag_box = st.empty()
+def _render_diag() -> None:
+    _diag_box.code("\n".join(_CHECKPOINTS), language="text")
+_render_diag()
+
 log = logging.getLogger("app")
 
 try:
     from app.core.config import settings
+    _ck("02: settings imported")
     from app.core.zerodha_auth import zerodha_auth
+    _ck("03: zerodha_auth imported")
     from app.core.market_calendar import (
         can_place_nse_bse_equity_trade,
         is_nse_bse_trading_day,
@@ -48,8 +65,10 @@ try:
         ist_now,
         IST,
     )
+    _ck("04: market_calendar imported")
     from app.core.risk_engine import RiskEngine
     from app.core.live_broker import LiveBroker
+    _ck("05: risk_engine + live_broker imported")
     from app.core.intraday_agent import (
         scan_intraday_universe,
         session_capital,
@@ -57,12 +76,17 @@ try:
         MAX_STOP_LOSS_PCT,
         MAX_TRADES_PER_DAY,
     )
+    _ck("06: intraday_agent imported")
     from app.core.trading_engine import TradingEngine, PHASE_ACTIVE
+    _ck("07: TradingEngine imported")
     from app.agents.orchestrator import Orchestrator
+    _ck("08: Orchestrator imported")
 except Exception as e:
+    _render_diag()
     st.error(f"Import failed: {e}")
     st.code(traceback.format_exc())
     st.stop()
+_render_diag()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -131,17 +155,23 @@ def bootstrap_auth() -> None:
 
 try:
     bootstrap_auth()
+    _ck("09: bootstrap_auth done")
 except Exception as e:
+    _render_diag()
     st.error(f"bootstrap_auth crashed: {e}")
     st.code(traceback.format_exc())
+_render_diag()
 
 # Start engine singleton (idle until Enable bot is clicked)
 try:
     engine = TradingEngine()
+    _ck("10: TradingEngine() ok")
 except Exception as e:
+    _render_diag()
     st.error(f"TradingEngine() crashed: {e}")
     st.code(traceback.format_exc())
     st.stop()
+_render_diag()
 
 
 @st.cache_resource
@@ -152,11 +182,15 @@ def get_orchestrator() -> Orchestrator:
 
 try:
     orchestrator = get_orchestrator()
+    _ck("11: Orchestrator() ok")
 except Exception as e:
+    _render_diag()
     st.error(f"Orchestrator() crashed at module load: {e}")
     st.code(traceback.format_exc())
     st.stop()
 ss.setdefault("agents_running", False)
+_ck("12: session state ready — about to render UI")
+_render_diag()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -764,19 +798,31 @@ def dashboard() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Render
 # ─────────────────────────────────────────────────────────────────────────────
+_ck("13: about to render st.title")
+_render_diag()
 st.title("Zerodha Intraday Bot")
 st.caption(f"Real-money · {datetime.now().strftime('%H:%M:%S')}")
+_ck("14: title + caption rendered")
+_render_diag()
 
 try:
+    _ck("15: calling sidebar()")
+    _render_diag()
     sidebar()
+    _ck("16: sidebar() done")
+    _render_diag()
     if ss.authed:
         dashboard()
+        _ck("17: dashboard() done")
     else:
         st.info(
             f"Log in via the **left pane**. Hard rules: SL <10%, Target ≥{MIN_TARGET_PCT:g}%, "
             f"NSE/BSE 9:15–15:30 IST only, max {MAX_TRADES_PER_DAY} trades/day."
         )
         st.caption(f"Kite redirect URL: `{settings.KITE_REDIRECT_URL}`")
+        _ck("17: not authed — info+caption rendered")
+    _render_diag()
 except Exception as e:
+    _render_diag()
     st.error(f"Render failed: {e}")
     st.code(traceback.format_exc())
