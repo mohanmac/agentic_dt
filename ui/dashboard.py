@@ -345,9 +345,9 @@ AGENT_NAMES = [
 ]
 
 
-@st.fragment(run_every="1s")
 def _agents_fragment() -> None:
-    """Inner fragment — must use st.* (not st.sidebar.*) per Streamlit's API."""
+    """Renders the 12-agent panel. Was previously @st.fragment(run_every="1s")
+    but that broke first-render on Streamlit Cloud; user clicks Refresh button now."""
     st.subheader("Agent system (12)")
     if not ss.agents_running:
         st.caption("Idle — Enable bot to start the 12-agent loop.")
