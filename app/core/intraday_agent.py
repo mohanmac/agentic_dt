@@ -21,8 +21,7 @@ from app.core.zerodha_auth import zerodha_auth
 IST = ZoneInfo("Asia/Kolkata")
 
 MIN_PRICE = 50.0
-MAX_PRICE = 150.0  # Tuned for ₹2,000 session capital — keeps 4-5 shares per ₹700 ticket
-                  # for usable position granularity at intraday 10% targets.
+MAX_PRICE = 300.0
 MIN_DAILY_VOLUME = 500_000
 MAX_SPREAD_PCT = 0.2
 MIN_DEPTH_EACH_SIDE = 2_000

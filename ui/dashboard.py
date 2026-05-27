@@ -56,8 +56,6 @@ try:
         MIN_TARGET_PCT,
         MAX_STOP_LOSS_PCT,
         MAX_TRADES_PER_DAY,
-        MIN_PRICE,
-        MAX_PRICE,
     )
     from app.core.trading_engine import TradingEngine, PHASE_ACTIVE
     from app.agents.orchestrator import Orchestrator
@@ -217,8 +215,8 @@ def sidebar() -> None:
     sidebar_llm_meter()
     st.sidebar.divider()
     st.sidebar.caption(
-        f"Capital ₹{settings.DAILY_CAPITAL:,.0f}  ·  Universe ₹{MIN_PRICE:g}–₹{MAX_PRICE:g}  ·  "
-        f"SL <10%  ·  Target ≥{MIN_TARGET_PCT:g}%  ·  Max {MAX_TRADES_PER_DAY}/day"
+        f"Capital ₹{settings.DAILY_CAPITAL:,.0f}  ·  SL <10%  ·  Target ≥{MIN_TARGET_PCT:g}%  "
+        f"·  Max {MAX_TRADES_PER_DAY}/day"
     )
 
     api_ok = (
