@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     KITE_API_KEY: str = Field(default="your_api_key_here", description="Zerodha API Key")
     KITE_API_SECRET: str = Field(default="your_api_secret_here", description="Zerodha API Secret")
     KITE_REDIRECT_URL: str = Field(
-        default="https://mohanmac-agentic-dt-uidashboard-v3-w6chek.streamlit.app",
-        description="Must match Redirect URL in Kite developer console (e.g. your Streamlit app URL).",
+        default="https://proactive-agentic-dt.streamlit.app",
+        description="Must match Redirect URL in Kite developer console (Streamlit app URL).",
     )
     
     # Ollama Configuration

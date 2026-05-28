@@ -20,41 +20,37 @@ Follow these steps to host your Day Trading Bot on Streamlit Community Cloud (Fr
 ## 2. Deploy on Streamlit Cloud
 1.  Go to [share.streamlit.io](https://share.streamlit.io/).
 2.  Click **New app**.
-3.  Select your GitHub repository (`day-trading-bot`).
-4.  **Main file path**: Enter `ui/dashboard_v3.py`.
+3.  Select repository **`mohanmac/proactive_agentic_dt`**, branch **`main`**.
+4.  **Main file path**: `streamlit_app.py` (loads the 12-agent `ui/dashboard.py`).
 5.  Click **Deploy!**.
 
+Public URL: **https://proactive-agentic-dt.streamlit.app** (short link may point here).
+
 ## 3. Configure Secrets (CRITICAL)
-Your app needs API keys to work. Since we didn't upload `.env`, we must set them in Streamlit Cloud.
-1.  On your deployed app dashboard, click **Manage app** (bottom right) -> **⋮ (Settings)** -> **Secrets**.
-2.  Paste the following configuration (Update with your REAL keys):
+Your app needs API keys to work. Since we did not upload `.env`, set them in Streamlit Cloud.
+
+1.  **Manage app** → **Settings** → **Secrets**.
+2.  Paste the template from `.streamlit/secrets.toml.example` and replace placeholders with your real keys.
+3.  In [Kite developer console](https://developers.kite.trade/), set **Redirect URL** to the **same** value as `KITE_REDIRECT_URL` (no placeholder URLs).
 
 ```toml
-# .streamlit/secrets.toml
-
 KITE_API_KEY = "your_zerodha_api_key"
 KITE_API_SECRET = "your_zerodha_api_secret"
-KITE_REDIRECT_URL = "https://your-app-url.streamlit.app"  # Update this after deployment!
+KITE_REDIRECT_URL = "https://proactive-agentic-dt.streamlit.app"
 
-# LLM Configuration (Ollama won't work in cloud!)
-# Use Google Gemini (Free Tier available) or OpenAI
-LLM_PROVIDER = "google"
-GOOGLE_API_KEY = "your_google_gemini_key"
-GOOGLE_MODEL = "gemini-1.5-pro"
+LLM_PROVIDER = "openai"
+OPENAI_API_KEY = "sk-..."
+OPENAI_MODEL = "gpt-4o-mini"
 
-# Trading Settings
-DAILY_CAPITAL = 2000
-MAX_DAILY_LOSS = 200
-MAX_TRADES_PER_DAY = 5
-ENABLE_LIVE_TRADING = false
+DAILY_CAPITAL = "2000"
 ```
 
+4.  **Save** Secrets, then **Reboot app**.
+
 ## 4. Important Changes for Cloud
-*   **Ollama**: Local Ollama **will not work** on Streamlit Cloud. You MUST switch to `LLM_PROVIDER="google"` (Gemini) or OpenAI.
-*   **Authentication**:
-    *   After deployment, copy your **App URL** (e.g., `https://my-bot.streamlit.app`).
-    *   Go to your [Zerodha Developer Console](https://developers.kite.trade/).
-    *   Update the **Redirect URL** to your App URL.
+*   **Ollama** does not run on Streamlit Cloud — use `LLM_PROVIDER = "openai"` (or Gemini with `GOOGLE_API_KEY`).
+*   **Authentication**: `KITE_REDIRECT_URL` must be `https://proactive-agentic-dt.streamlit.app`, not `your-new-app.streamlit.app` or any other placeholder.
+*   **`.streamlit/config.toml`**: uses `fileWatcherType = "none"` to avoid inotify errors on Cloud.
 *   **Persistence**: Streamlit Cloud restarts your app frequently. The `data/` folder will be reset. Trade history (SQL/JSON) will not persist across reboots unless you use an external database (which is an advanced step).
 
 ## 5. Mobile App Conversion
