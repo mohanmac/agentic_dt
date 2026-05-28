@@ -1,3 +1,4 @@
+# deploy-marker: full-dashboard-2026-03-16 (not Hello World smoke test)
 import sys
 from pathlib import Path
 
