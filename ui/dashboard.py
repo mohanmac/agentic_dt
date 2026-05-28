@@ -36,6 +36,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Paint immediately so Streamlit Cloud never shows a blank page while imports/init run.
+st.title("Zerodha Intraday Bot")
+_boot_status = st.empty()
+_boot_status.info("Loading dashboard…")
+
 log = logging.getLogger("app")
 
 try:
@@ -60,7 +65,7 @@ try:
     from app.core.trading_engine import TradingEngine, PHASE_ACTIVE
     from app.agents.orchestrator import Orchestrator
 except Exception as e:
-    st.error(f"Import failed: {e}")
+    _boot_status.error(f"Import failed: {e}")
     st.code(traceback.format_exc())
     st.stop()
 
@@ -82,6 +87,7 @@ ss.setdefault("strategy_enabled", {
 # Auth bootstrap
 # ─────────────────────────────────────────────────────────────────────────────
 def bootstrap_auth() -> None:
+    """Handle OAuth redirect query params only (fast — no blocking Kite API calls)."""
     if ss.authed:
         return
     qp = st.query_params
@@ -93,13 +99,26 @@ def bootstrap_auth() -> None:
             pass
         st.sidebar.error(f"Login failed: {err}")
         return
-    # Cloud OAuth: Kite redirects back here with ?request_token=... &action=login.
-    # Exchange in-process — no need for the uvicorn /callback route.
     if "request_token" in qp:
-        token = qp.get("request_token")
+        token = str(qp.get("request_token") or "")
+        if ss.get("_oauth_token_done") == token:
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+            return
+        ss._oauth_token_done = token
         try:
             zerodha_auth.exchange_request_token(token)
             log.info("kite_oauth_exchange_success")
+            ok, profile = zerodha_auth.validate_token()
+            if ok and profile:
+                ss.authed = True
+                ss.profile = {
+                    "user_id": profile.get("user_id"),
+                    "user_name": profile.get("user_name"),
+                    "email": profile.get("email"),
+                }
         except Exception as exc:
             log.exception("kite_oauth_exchange_failed")
             st.sidebar.error(f"Kite login failed: {exc}")
@@ -113,35 +132,34 @@ def bootstrap_auth() -> None:
             st.query_params.clear()
         except Exception:
             pass
+
+
+def try_restore_session() -> None:
+    """Validate saved token once per session (can be slow — not at module import)."""
+    if ss.authed or ss.get("_auth_restore_attempted"):
+        return
+    ss._auth_restore_attempted = True
     try:
         zerodha_auth._load_token()
-        if zerodha_auth.kite.access_token:
-            ok, profile = zerodha_auth.validate_token()
-            if ok and profile:
-                ss.authed = True
-                ss.profile = {
-                    "user_id": profile.get("user_id"),
-                    "user_name": profile.get("user_name"),
-                    "email": profile.get("email"),
-                }
+        if not zerodha_auth.kite.access_token:
+            return
+        ok, profile = zerodha_auth.validate_token()
+        if ok and profile:
+            ss.authed = True
+            ss.profile = {
+                "user_id": profile.get("user_id"),
+                "user_name": profile.get("user_name"),
+                "email": profile.get("email"),
+            }
     except Exception as e:
-        log.exception("bootstrap_auth failed")
+        log.exception("try_restore_session failed")
         st.sidebar.warning(f"Auth check failed: {e}")
 
 
-try:
-    bootstrap_auth()
-except Exception as e:
-    st.error(f"bootstrap_auth crashed: {e}")
-    st.code(traceback.format_exc())
-
-# Start engine singleton (idle until Enable bot is clicked)
-try:
-    engine = TradingEngine()
-except Exception as e:
-    st.error(f"TradingEngine() crashed: {e}")
-    st.code(traceback.format_exc())
-    st.stop()
+@st.cache_resource
+def get_engine() -> TradingEngine:
+    """Singleton engine — created on first use, not at import."""
+    return TradingEngine()
 
 
 @st.cache_resource
@@ -201,7 +219,7 @@ def sidebar_llm_meter() -> None:
     except Exception:
         total_tokens = 0
     try:
-        trades_today = int(engine.risk_engine.daily_stats.total_trades or 0)
+        trades_today = int(get_engine().risk_engine.daily_stats.total_trades or 0)
     except Exception:
         trades_today = 0
     per_trade = (total_tokens / trades_today) if trades_today else None
@@ -240,7 +258,7 @@ def sidebar() -> None:
                 zerodha_auth.logout()
             except Exception:
                 pass
-            engine.disable()
+            get_engine().disable()
             ss.authed = False
             ss.profile = None
             st.rerun()
@@ -298,13 +316,13 @@ def sidebar_funds() -> None:
 
 def sidebar_engine_controls() -> None:
     st.sidebar.subheader("Bot controls")
-    snap = engine.snapshot()
+    snap = get_engine().snapshot()
 
     try:
         if snap.enabled:
             if st.sidebar.button("⏸ Disable bot", use_container_width=True, key="disable_bot_btn"):
                 log.info("UI: Disable bot clicked")
-                engine.disable()
+                get_engine().disable()
                 if ss.agents_running:
                     get_orch().shutdown()
                     ss.agents_running = False
@@ -313,7 +331,7 @@ def sidebar_engine_controls() -> None:
                 "▶️ Enable bot", type="primary", use_container_width=True, key="enable_bot_btn"
             ):
                 log.info("UI: Enable bot clicked")
-                engine.enable()
+                get_engine().enable()
                 if not ss.agents_running:
                     get_orch().start_all()
                     ss.agents_running = True
@@ -331,7 +349,7 @@ def sidebar_engine_controls() -> None:
                  "When OFF, you place each trade manually from Signals.",
         )
         if new_auto != snap.auto_execute:
-            engine.set_auto_execute(new_auto)
+            get_engine().set_auto_execute(new_auto)
             get_orch().set_auto_execute(new_auto)
         if new_auto:
             st.sidebar.warning("⚠️ Auto-execute is ON — engine will place real orders.")
@@ -426,7 +444,7 @@ def minutes_to_square_off() -> int | None:
 
 def top_status_strip(capital: float, snap) -> None:
     mkt_ok, mkt_msg = can_place_nse_bse_equity_trade()
-    re: RiskEngine = engine.risk_engine
+    re: RiskEngine = get_engine().risk_engine
 
     c = st.columns([1.4, 1.4, 1.0, 1.0, 1.0, 1.2, 1.0])
 
@@ -482,7 +500,7 @@ def top_status_strip(capital: float, snap) -> None:
         help="Emergency: disable bot + cancel all open Kite orders",
     ):
         with st.spinner("Cancelling all open orders…"):
-            result = engine.kill_all()
+            result = get_engine().kill_all()
         st.toast(
             f"KILL ALL — cancelled {result['cancelled']}, failures {len(result['failures'])}",
             icon="🔥",
@@ -508,7 +526,7 @@ def validate_trade(entry: float, sl: float, target: float, qty: int, capital: fl
         return False, f"SL distance {sl_pct:.2f}% violates hard cap (<10%)."
     if tgt_pct < MIN_TARGET_PCT - 1e-6:
         return False, f"Target {tgt_pct:.2f}% below {MIN_TARGET_PCT:.1f}% floor."
-    re: RiskEngine = engine.risk_engine
+    re: RiskEngine = get_engine().risk_engine
     pos_cap_inr = capital * (re.config.max_position_size_percent / 100.0)
     notional = entry * qty
     if notional > pos_cap_inr:
@@ -619,7 +637,7 @@ def order_book_panel() -> None:
 
 def signals_panel(capital: float, snap) -> None:
     st.subheader("Signals (engine candidates)")
-    re: RiskEngine = engine.risk_engine
+    re: RiskEngine = get_engine().risk_engine
     slots = max(0, re.config.max_trades_per_day - re.daily_stats.total_trades)
     st.caption(
         f"Slots left: **{slots}/{re.config.max_trades_per_day}** · "
@@ -694,7 +712,7 @@ def place_bracket_manually(d) -> None:
             stop_loss_price=float(d.stop_loss),
             target_price=float(d.target),
         )
-        engine.risk_engine.daily_stats.total_trades += 1
+        get_engine().risk_engine.daily_stats.total_trades += 1
         oid = getattr(order, "order_id", order)
         st.success(f"✅ Live order sent: {oid}")
     except Exception as e:
@@ -716,7 +734,7 @@ def activity_feed(snap) -> None:
 
 
 def guardrails_panel() -> None:
-    re: RiskEngine = engine.risk_engine
+    re: RiskEngine = get_engine().risk_engine
     c = re.config
     st.markdown(
         f"""
@@ -745,7 +763,7 @@ def guardrails_panel() -> None:
 
 
 def dashboard() -> None:
-    snap = engine.snapshot()
+    snap = get_engine().snapshot()
     cap = session_capital()
     safe("top_strip", top_status_strip, cap, snap)
     st.divider()
@@ -768,10 +786,11 @@ def dashboard() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Render
 # ─────────────────────────────────────────────────────────────────────────────
-st.title("Zerodha Intraday Bot")
-st.caption(f"Real-money · {datetime.now().strftime('%H:%M:%S')}")
-
 try:
+    bootstrap_auth()
+    try_restore_session()
+    _boot_status.empty()
+    st.caption(f"Real-money · {datetime.now().strftime('%H:%M:%S')}")
     sidebar()
     if ss.authed:
         dashboard()
@@ -782,5 +801,6 @@ try:
         )
         st.caption(f"Kite redirect URL: `{settings.KITE_REDIRECT_URL}`")
 except Exception as e:
+    _boot_status.empty()
     st.error(f"Render failed: {e}")
     st.code(traceback.format_exc())
