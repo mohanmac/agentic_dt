@@ -1,7 +1,9 @@
+# Community Cloud: disable file watcher (avoids inotify limit) and use default CORS/XSRF.
+# Local dev overrides: start_dashboard.sh passes --server.enableCORS false etc.
 [server]
 headless = true
-enableXsrfProtection = false
-enableCORS = false
+fileWatcherType = "none"
+enableWebsocketCompression = true
 
 [browser]
 gatherUsageStats = false

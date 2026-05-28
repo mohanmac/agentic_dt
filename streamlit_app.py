@@ -1,14 +1,10 @@
-import sys
-from pathlib import Path
+"""Streamlit Cloud entry — temporary smoke test.
 
-# Use macOS / Windows system trust store so corporate MITM SSL proxies' CA certs
-# (already installed in the OS keychain) are trusted. Must run before any HTTPS call.
-try:
-    import truststore
-    truststore.inject_into_ssl()
-except ImportError:
-    pass
+If you see "Hello World", Cloud UI works; restore full dashboard import below.
+"""
+import streamlit as st
 
-sys.path.append(str(Path(__file__).parent))
-
-import ui.dashboard  # noqa: F401  — 12-agent proactive Zerodha intraday system
+st.set_page_config(page_title="Cloud smoke test", layout="wide")
+st.title("Hello World")
+st.success("If you see this, Streamlit Cloud UI is working.")
+st.caption("Deploy OK — next step: restore full dashboard in streamlit_app.py (see streamlit_app_full.py).")
