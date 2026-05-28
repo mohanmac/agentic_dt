@@ -46,6 +46,7 @@ log = logging.getLogger("app")
 try:
     from app.core.config import settings
     from app.core.zerodha_auth import zerodha_auth
+    from app.core.env_bootstrap import is_streamlit_cloud, CLOUD_APP_URL
     from app.core.market_calendar import (
         can_place_nse_bse_equity_trade,
         is_nse_bse_trading_day,
@@ -53,17 +54,6 @@ try:
         ist_now,
         IST,
     )
-    from app.core.risk_engine import RiskEngine
-    from app.core.live_broker import LiveBroker
-    from app.core.intraday_agent import (
-        scan_intraday_universe,
-        session_capital,
-        MIN_TARGET_PCT,
-        MAX_STOP_LOSS_PCT,
-        MAX_TRADES_PER_DAY,
-    )
-    from app.core.trading_engine import TradingEngine, PHASE_ACTIVE
-    from app.agents.orchestrator import Orchestrator
 except Exception as e:
     _boot_status.error(f"Import failed: {e}")
     st.code(traceback.format_exc())
@@ -157,21 +147,35 @@ def try_restore_session() -> None:
 
 
 @st.cache_resource
-def get_engine() -> TradingEngine:
+def get_engine():
     """Singleton engine — created on first use, not at import."""
+    from app.core.trading_engine import TradingEngine
     return TradingEngine()
 
 
 @st.cache_resource
-def get_orchestrator() -> Orchestrator:
+def get_orchestrator():
     """One Orchestrator across Streamlit reruns — threads aren't recreated each tick."""
+    from app.agents.orchestrator import Orchestrator
     return Orchestrator()
+
+
+@st.cache_resource
+def _intraday_rules():
+    from app.core.intraday_agent import (
+        MIN_TARGET_PCT,
+        MAX_STOP_LOSS_PCT,
+        MAX_TRADES_PER_DAY,
+        session_capital,
+        scan_intraday_universe,
+    )
+    return MIN_TARGET_PCT, MAX_STOP_LOSS_PCT, MAX_TRADES_PER_DAY, session_capital, scan_intraday_universe
 
 
 ss.setdefault("agents_running", False)
 
 
-def get_orch() -> Orchestrator:
+def get_orch():
     """Lazy init — avoids Cloud deploy rollback when orchestrator fails at import time."""
     try:
         return get_orchestrator()
@@ -234,11 +238,18 @@ def sidebar_llm_meter() -> None:
 def sidebar() -> None:
     st.sidebar.markdown(PULSE_CSS, unsafe_allow_html=True)
     st.sidebar.title("Zerodha Intraday Bot")
+    if is_streamlit_cloud():
+        st.sidebar.success("Streamlit Cloud")
+        if "127.0.0.1" in settings.KITE_REDIRECT_URL or "localhost" in settings.KITE_REDIRECT_URL:
+            st.sidebar.error("Fix Secrets: KITE_REDIRECT_URL must be your .streamlit.app URL")
+        else:
+            st.sidebar.caption(f"OAuth: {settings.KITE_REDIRECT_URL}")
     sidebar_llm_meter()
     st.sidebar.divider()
+    min_tgt, _, max_trades, _, _ = _intraday_rules()
     st.sidebar.caption(
-        f"Capital ₹{settings.DAILY_CAPITAL:,.0f}  ·  SL <10%  ·  Target ≥{MIN_TARGET_PCT:g}%  "
-        f"·  Max {MAX_TRADES_PER_DAY}/day"
+        f"Capital ₹{settings.DAILY_CAPITAL:,.0f}  ·  SL <10%  ·  Target ≥{min_tgt:g}%  "
+        f"·  Max {max_trades}/day"
     )
 
     api_ok = (
@@ -393,7 +404,10 @@ def _agents_fragment() -> None:
             dot = '<span class="idle-dot"></span>'
         stale = info.get("stale_s")
         suffix = f"<span style='color:#888'> · {stale:.1f}s</span>" if isinstance(stale, (int, float)) else ""
-        card_link = f"<a href='http://127.0.0.1:8000/agents/{name}/card.json' target='_blank' style='color:#3b82f6; text-decoration:none;'>card</a>"
+        if is_streamlit_cloud():
+            card_link = "<span style='color:#888'>card (local API)</span>"
+        else:
+            card_link = f"<a href='http://127.0.0.1:8000/agents/{name}/card.json' target='_blank' style='color:#3b82f6; text-decoration:none;'>card</a>"
         st.markdown(
             f"<div class='agent-line'>{dot}{name}{suffix} · {card_link}</div>",
             unsafe_allow_html=True,
@@ -444,7 +458,7 @@ def minutes_to_square_off() -> int | None:
 
 def top_status_strip(capital: float, snap) -> None:
     mkt_ok, mkt_msg = can_place_nse_bse_equity_trade()
-    re: RiskEngine = get_engine().risk_engine
+    re = get_engine().risk_engine
 
     c = st.columns([1.4, 1.4, 1.0, 1.0, 1.0, 1.2, 1.0])
 
@@ -524,9 +538,10 @@ def validate_trade(entry: float, sl: float, target: float, qty: int, capital: fl
         return False, f"SL must be below entry (SL ₹{sl:.2f}, entry ₹{entry:.2f})."
     if sl_pct >= 10.0:
         return False, f"SL distance {sl_pct:.2f}% violates hard cap (<10%)."
-    if tgt_pct < MIN_TARGET_PCT - 1e-6:
-        return False, f"Target {tgt_pct:.2f}% below {MIN_TARGET_PCT:.1f}% floor."
-    re: RiskEngine = get_engine().risk_engine
+    min_tgt, _, _, _, _ = _intraday_rules()
+    if tgt_pct < min_tgt - 1e-6:
+        return False, f"Target {tgt_pct:.2f}% below {min_tgt:.1f}% floor."
+    re = get_engine().risk_engine
     pos_cap_inr = capital * (re.config.max_position_size_percent / 100.0)
     notional = entry * qty
     if notional > pos_cap_inr:
@@ -584,6 +599,7 @@ def safe(name: str, fn, *args, **kwargs):
 def positions_panel() -> None:
     st.subheader("Open positions (live)")
     try:
+        from app.core.live_broker import LiveBroker
         b = LiveBroker()
         portfolio = b.get_portfolio()
     except Exception as e:
@@ -612,6 +628,7 @@ def positions_panel() -> None:
 def order_book_panel() -> None:
     st.subheader("Order book (live)")
     try:
+        from app.core.live_broker import LiveBroker
         b = LiveBroker()
         orders = b.orders
     except Exception as e:
@@ -636,12 +653,14 @@ def order_book_panel() -> None:
 
 
 def signals_panel(capital: float, snap) -> None:
+    from app.core.trading_engine import PHASE_ACTIVE
+    min_tgt, _, _, _, _ = _intraday_rules()
     st.subheader("Signals (engine candidates)")
-    re: RiskEngine = get_engine().risk_engine
+    re = get_engine().risk_engine
     slots = max(0, re.config.max_trades_per_day - re.daily_stats.total_trades)
     st.caption(
         f"Slots left: **{slots}/{re.config.max_trades_per_day}** · "
-        f"SL cap <10% · Target floor ≥{MIN_TARGET_PCT:g}% · "
+        f"SL cap <10% · Target floor ≥{min_tgt:g}% · "
         + (f"Last scan **{snap.last_scan_at}** IST" if snap.last_scan_at else "No scan yet")
     )
     candidates = snap.candidates or []
@@ -704,6 +723,7 @@ def place_bracket_manually(d) -> None:
         st.error(f"Market gate: {msg}")
         return
     try:
+        from app.core.live_broker import LiveBroker
         b = LiveBroker()
         order = b.place_bracket_buy(
             symbol=d.stock,
@@ -734,7 +754,8 @@ def activity_feed(snap) -> None:
 
 
 def guardrails_panel() -> None:
-    re: RiskEngine = get_engine().risk_engine
+    min_tgt, max_sl, _, _, _ = _intraday_rules()
+    re = get_engine().risk_engine
     c = re.config
     st.markdown(
         f"""
@@ -746,8 +767,8 @@ def guardrails_panel() -> None:
 - `14:45–15:30` Closing — no new entries; broker MIS squares off
 
 **Hard rules (every order)**
-- SL distance **< 10%** (engine caps at {MAX_STOP_LOSS_PCT:g}%)
-- Target **≥ {MIN_TARGET_PCT:g}%**
+- SL distance **< 10%** (engine caps at {max_sl:g}%)
+- Target **≥ {min_tgt:g}%**
 - Position size **≤ {c.max_position_size_percent:.0f}%** of capital
 - Max open positions: **{c.max_open_positions}**
 - Max trades/day: **{c.max_trades_per_day}**
@@ -764,6 +785,7 @@ def guardrails_panel() -> None:
 
 def dashboard() -> None:
     snap = get_engine().snapshot()
+    _, _, _, session_capital, _ = _intraday_rules()
     cap = session_capital()
     safe("top_strip", top_status_strip, cap, snap)
     st.divider()
@@ -795,11 +817,26 @@ try:
     if ss.authed:
         dashboard()
     else:
+        min_tgt, _, max_trades, _, _ = _intraday_rules()
         st.info(
-            f"Log in via the **left pane**. Hard rules: SL <10%, Target ≥{MIN_TARGET_PCT:g}%, "
-            f"NSE/BSE 9:15–15:30 IST only, max {MAX_TRADES_PER_DAY} trades/day."
+            f"Log in via the **left pane**. Hard rules: SL <10%, Target ≥{min_tgt:g}%, "
+            f"NSE/BSE 9:15–15:30 IST only, max {max_trades} trades/day."
         )
-        st.caption(f"Kite redirect URL: `{settings.KITE_REDIRECT_URL}`")
+        redirect = settings.KITE_REDIRECT_URL.strip()
+        st.caption(f"Kite redirect URL: `{redirect}`")
+        if is_streamlit_cloud():
+            st.markdown(
+                f"**Cloud checklist:** Kite console redirect = `{CLOUD_APP_URL}` · "
+                "Secrets must include `KITE_API_KEY`, `KITE_API_SECRET`, same redirect URL, "
+                "`LLM_PROVIDER=openai`, and `OPENAI_API_KEY`. Then **Reboot app** after saving Secrets."
+            )
+            if redirect == CLOUD_APP_URL:
+                st.success("Redirect URL is correct for Streamlit Cloud.")
+            else:
+                st.warning(
+                    f"Redirect should be `{CLOUD_APP_URL}` (not localhost). "
+                    "Update Streamlit Secrets and reboot."
+                )
 except Exception as e:
     _boot_status.empty()
     st.error(f"Render failed: {e}")

@@ -2,8 +2,6 @@
 import sys
 from pathlib import Path
 
-import streamlit as st
-
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
@@ -12,6 +10,13 @@ try:
     truststore.inject_into_ssl()
 except ImportError:
     pass
+
+# Inject Streamlit [secrets] into os.environ before config/settings import.
+from app.core.env_bootstrap import apply_env_bootstrap
+
+apply_env_bootstrap()
+
+import streamlit as st
 
 try:
     import ui.dashboard  # noqa: F401 — set_page_config + full UI live here

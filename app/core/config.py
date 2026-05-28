@@ -2,11 +2,15 @@
 Configuration management for DayTradingPaperBot.
 Loads all settings from environment variables with validation.
 """
-from pydantic_settings import BaseSettings
-from pydantic import Field, validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
 from typing import List
 import os
 from pathlib import Path
+
+from app.core.env_bootstrap import apply_env_bootstrap, normalize_kite_redirect
+
+apply_env_bootstrap()
 
 
 class Settings(BaseSettings):
@@ -107,21 +111,29 @@ class Settings(BaseSettings):
     TRADING_SYMBOLS: str = Field(default="HINDCOPPER,MCX,LAURUSLABS,NAVINFLUOR,RADICO")
     MAX_TRADES_PER_DAY: int = Field(default=20)
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-    
-    @validator("MAX_DAILY_LOSS")
-    def validate_max_loss(cls, v, values):
-        """Ensure max daily loss is reasonable."""
-        if "DAILY_CAPITAL" in values and v > values["DAILY_CAPITAL"]:
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    @field_validator("KITE_REDIRECT_URL", mode="before")
+    @classmethod
+    def normalize_redirect(cls, v: str) -> str:
+        return normalize_kite_redirect(str(v or ""))
+
+    @field_validator("MAX_DAILY_LOSS")
+    @classmethod
+    def validate_max_loss(cls, v: float, info) -> float:
+        cap = info.data.get("DAILY_CAPITAL") if info.data else None
+        if cap is not None and v > cap:
             raise ValueError("MAX_DAILY_LOSS cannot exceed DAILY_CAPITAL")
         return v
-    
-    @validator("HITL_CONFIDENCE_THRESHOLD")
-    def validate_confidence_threshold(cls, v):
-        """Ensure confidence threshold is between 0 and 1."""
+
+    @field_validator("HITL_CONFIDENCE_THRESHOLD")
+    @classmethod
+    def validate_confidence_threshold(cls, v: float) -> float:
         if not 0 <= v <= 1:
             raise ValueError("HITL_CONFIDENCE_THRESHOLD must be between 0 and 1")
         return v
