@@ -1,15 +1,21 @@
-# deploy-marker: full-dashboard-2026-03-16 (not Hello World smoke test)
+"""Streamlit Cloud entry — loads the 12-agent Zerodha intraday dashboard."""
 import sys
 from pathlib import Path
 
-# Use macOS / Windows system trust store so corporate MITM SSL proxies' CA certs
-# (already installed in the OS keychain) are trusted. Must run before any HTTPS call.
+import streamlit as st
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+
 try:
     import truststore
     truststore.inject_into_ssl()
 except ImportError:
     pass
 
-sys.path.append(str(Path(__file__).parent))
-
-import ui.dashboard  # noqa: F401  — 12-agent proactive Zerodha intraday system
+try:
+    import ui.dashboard  # noqa: F401 — set_page_config + full UI live here
+except Exception as e:
+    st.error("Dashboard failed to load. Check Streamlit Cloud logs.")
+    st.exception(e)
+    st.stop()

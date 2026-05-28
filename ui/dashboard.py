@@ -150,13 +150,17 @@ def get_orchestrator() -> Orchestrator:
     return Orchestrator()
 
 
-try:
-    orchestrator = get_orchestrator()
-except Exception as e:
-    st.error(f"Orchestrator() crashed at module load: {e}")
-    st.code(traceback.format_exc())
-    st.stop()
 ss.setdefault("agents_running", False)
+
+
+def get_orch() -> Orchestrator:
+    """Lazy init — avoids Cloud deploy rollback when orchestrator fails at import time."""
+    try:
+        return get_orchestrator()
+    except Exception as e:
+        st.error(f"Orchestrator() failed: {e}")
+        st.code(traceback.format_exc())
+        st.stop()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -302,7 +306,7 @@ def sidebar_engine_controls() -> None:
                 log.info("UI: Disable bot clicked")
                 engine.disable()
                 if ss.agents_running:
-                    orchestrator.shutdown()
+                    get_orch().shutdown()
                     ss.agents_running = False
         else:
             if st.sidebar.button(
@@ -311,7 +315,7 @@ def sidebar_engine_controls() -> None:
                 log.info("UI: Enable bot clicked")
                 engine.enable()
                 if not ss.agents_running:
-                    orchestrator.start_all()
+                    get_orch().start_all()
                     ss.agents_running = True
     except Exception as e:
         log.exception("Bot toggle failed")
@@ -328,7 +332,7 @@ def sidebar_engine_controls() -> None:
         )
         if new_auto != snap.auto_execute:
             engine.set_auto_execute(new_auto)
-            orchestrator.set_auto_execute(new_auto)
+            get_orch().set_auto_execute(new_auto)
         if new_auto:
             st.sidebar.warning("⚠️ Auto-execute is ON — engine will place real orders.")
         else:
@@ -352,12 +356,12 @@ def _agents_fragment() -> None:
     if not ss.agents_running:
         st.caption("Idle — Enable bot to start the 12-agent loop.")
         return
-    health = orchestrator.bus.get("health") or {}
+    health = get_orch().bus.get("health") or {}
     ok = sum(1 for v in health.values() if v.get("status") == "OK")
     st.caption(f"{ok}/{len(AGENT_NAMES)} OK · animations show live ticks")
 
     for name in AGENT_NAMES:
-        last = orchestrator.bus.get(f"last_result:{name}")
+        last = get_orch().bus.get(f"last_result:{name}")
         recent = bool(last and (datetime.now() - last.ts).total_seconds() <= 2.0)
         info = health.get(name) or {}
         status = info.get("status")
@@ -378,7 +382,7 @@ def _agents_fragment() -> None:
         )
 
     # Risk alerts from agent07
-    alerts = orchestrator.bus.get("risk_alerts") or []
+    alerts = get_orch().bus.get("risk_alerts") or []
     if alerts:
         st.markdown("---")
         st.markdown("**⚠️ Risk alerts (agent07)**")
