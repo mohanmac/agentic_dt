@@ -299,6 +299,48 @@ def sidebar() -> None:
     login_url = zerodha_auth.generate_login_url()
     st.sidebar.link_button("Login to Kite", login_url, use_container_width=True, type="primary")
 
+    # Manual fallback: if Kite's redirect URL points somewhere this app can't
+    # receive (e.g. a dead localhost callback), paste the request_token here.
+    with st.sidebar.expander("Trouble logging in? Paste token manually"):
+        st.caption(
+            "After **Login to Kite**, copy the `request_token=…` value from the "
+            "page Kite redirects you to (you can paste the whole URL too), then "
+            "authenticate here. Tokens expire in ~2 minutes — be quick."
+        )
+        raw = st.text_input(
+            "request_token (or full redirect URL)",
+            key="manual_request_token",
+            autocomplete="off",
+            placeholder="e.g. 1cYvT5nkL88piDYZdO8xaF2NBcx3TngB",
+        )
+        if st.button("Authenticate", use_container_width=True, key="manual_auth_btn"):
+            from urllib.parse import urlparse, parse_qs
+
+            token = (raw or "").strip()
+            if "request_token=" in token:  # user pasted the whole redirect URL
+                qs = parse_qs(urlparse(token).query)
+                token = (qs.get("request_token") or [""])[0]
+            if not token:
+                st.error("Paste a request_token (or the full redirect URL) first.")
+            else:
+                try:
+                    zerodha_auth.exchange_request_token(token)
+                    ok, profile = zerodha_auth.validate_token()
+                    if ok and profile:
+                        ss.authed = True
+                        ss.profile = {
+                            "user_id": profile.get("user_id"),
+                            "user_name": profile.get("user_name"),
+                            "email": profile.get("email"),
+                        }
+                        log.info("kite_manual_token_exchange_success")
+                        st.rerun()
+                    else:
+                        st.error("Token accepted but profile validation failed. Try a fresh token.")
+                except Exception as exc:
+                    log.exception("kite_manual_token_exchange_failed")
+                    st.error(f"Login failed: {exc}. Generate a fresh token and retry quickly.")
+
 
 def sidebar_funds() -> None:
     """Live funds & margins from Zerodha (equity segment)."""
