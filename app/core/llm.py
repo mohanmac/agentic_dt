@@ -6,7 +6,10 @@ import requests
 import json
 from typing import Optional, Dict, Any, List
 from abc import ABC, abstractmethod
-import google.generativeai as genai
+
+# NOTE: google.generativeai is imported lazily inside GeminiProvider so it never
+# loads on the hot/cold-start path when LLM_PROVIDER is openai/ollama (e.g. on
+# Streamlit Cloud). The package is large and deprecated; eager import slowed boot.
 
 from app.core.config import settings
 from app.core.utils import logger, log_event
@@ -104,7 +107,10 @@ class GeminiProvider(LLMProvider):
         super().__init__()
         self.api_key = settings.GOOGLE_API_KEY
         self.model_name = settings.GOOGLE_MODEL
-        
+
+        import google.generativeai as genai  # lazy: only when Gemini is selected
+        self._genai = genai
+
         if self.api_key:
             genai.configure(api_key=self.api_key)
             self.model = genai.GenerativeModel(self.model_name)
@@ -123,7 +129,7 @@ class GeminiProvider(LLMProvider):
             if not self.model:
                 raise ValueError("Gemini not configured (missing API Key)")
                 
-            generation_config = genai.types.GenerationConfig(
+            generation_config = self._genai.types.GenerationConfig(
                 temperature=temperature,
                 max_output_tokens=max_tokens
             )
@@ -159,7 +165,7 @@ class GeminiProvider(LLMProvider):
             if not self.api_key:
                 return False
             # Simple check: list models
-            for m in genai.list_models():
+            for m in self._genai.list_models():
                 if "generateContent" in m.supported_generation_methods:
                     return True
             return False
