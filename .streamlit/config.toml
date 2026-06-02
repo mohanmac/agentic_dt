@@ -3,7 +3,11 @@
 [server]
 headless = true
 fileWatcherType = "none"
-enableWebsocketCompression = true
+# Keep websocket compression OFF (Streamlit default). Community Cloud's reverse
+# proxy mishandles large compressed WS frames, so the full dashboard's render
+# deltas never reach the browser → blank page. A tiny page can squeak through,
+# which is why the earlier Hello-World smoke test looked fine.
+enableWebsocketCompression = false
 
 [browser]
 gatherUsageStats = false
