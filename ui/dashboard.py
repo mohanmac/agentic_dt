@@ -91,41 +91,39 @@ def bootstrap_auth() -> None:
             st.query_params.clear()
         except Exception:
             pass
-        st.sidebar.error(f"Login failed: {err}")
+        ss._oauth_error = f"Login failed: {err}"
         return
-    if "request_token" in qp:
-        token = str(qp.get("request_token") or "")
-        if ss.get("_oauth_token_done") == token:
-            try:
-                st.query_params.clear()
-            except Exception:
-                pass
-            return
-        ss._oauth_token_done = token
-        try:
-            zerodha_auth.exchange_request_token(token)
-            log.info("kite_oauth_exchange_success")
-            ok, profile = zerodha_auth.validate_token()
-            if ok and profile:
-                ss.authed = True
-                ss.profile = {
-                    "user_id": profile.get("user_id"),
-                    "user_name": profile.get("user_name"),
-                    "email": profile.get("email"),
-                }
-        except Exception as exc:
-            log.exception("kite_oauth_exchange_failed")
-            st.sidebar.error(f"Kite login failed: {exc}")
+    if "request_token" not in qp:
+        return
+    token = str(qp.get("request_token") or "").strip()
+    # Single-use token: only attempt each one once per session. Don't clear the
+    # URL or rerun on a repeat — that's what created the silent login loop.
+    if not token or ss.get("_oauth_token_done") == token:
+        return
+    ss._oauth_token_done = token
+    try:
+        zerodha_auth.exchange_request_token(token)
+        log.info("kite_oauth_exchange_success")
+        ok, profile = zerodha_auth.validate_token()
+    except Exception as exc:
+        log.exception("kite_oauth_exchange_failed")
+        ss._oauth_error = f"Kite login failed: {exc}. Generate a fresh token and retry."
+        return
+    if ok and profile:
+        ss.authed = True
+        ss.profile = {
+            "user_id": profile.get("user_id"),
+            "user_name": profile.get("user_name"),
+            "email": profile.get("email"),
+        }
+        ss._oauth_error = None
         try:
             st.query_params.clear()
         except Exception:
             pass
         st.rerun()
-    if "auth" in qp:
-        try:
-            st.query_params.clear()
-        except Exception:
-            pass
+    else:
+        ss._oauth_error = "Token exchanged but Kite profile validation failed. Generate a fresh token and retry."
 
 
 def try_restore_session() -> None:
@@ -292,6 +290,8 @@ def sidebar() -> None:
     # redirect back, bootstrap_auth() reads request_token from the URL and
     # exchanges it for an access_token automatically (no manual step needed).
     st.sidebar.subheader("Login")
+    if ss.get("_oauth_error"):
+        st.sidebar.error(ss._oauth_error)
     st.sidebar.caption(
         "Click **Login to Kite** — Zerodha verifies your credentials + 2FA on their "
         "own site, then redirects back here. The app auto-reads the token from the "
@@ -894,6 +894,13 @@ def auto_refresh(interval_ms: int = 15_000, key: str = "dash_autorefresh") -> No
     reload — so the Kite session/session_state survive and the KILL ALL button
     stays responsive. Degrades to a hint if the component isn't installed.
     """
+    # Never auto-rerun mid-OAuth handshake — a rerun could clear the redirect's
+    # request_token before bootstrap_auth() exchanges it.
+    try:
+        if "request_token" in st.query_params:
+            return
+    except Exception:
+        pass
     try:
         from streamlit_autorefresh import st_autorefresh
         st_autorefresh(interval=interval_ms, key=key)
@@ -905,11 +912,17 @@ def auto_logoff_after_close() -> None:
     """At/after 15:40 IST on a trading day, stop the bot + agents and log off Kite.
 
     15:40 is the post-square-off boundary (REGULAR_END 15:30 → CLOSING_START 15:40),
-    so MIS positions are already flat. Guarded to fire once per day, so a manual
-    re-login afterwards (to review the order book) won't be kicked out again.
+    so MIS positions are already flat.
+
+    CRITICAL: only fires for a session that was actually RUNNING the bot when the
+    close arrived (ss.agents_running). A fresh login after hours — e.g. logging in
+    in the evening to review or test — must NEVER be auto-logged-off, otherwise it
+    invalidates the just-issued token and bounces the user straight back to login.
     """
     if not ss.authed:
         return
+    if not ss.get("agents_running"):
+        return  # nothing was trading — don't kick a review/after-hours login
     from datetime import time as _t
     now = ist_now()
     if not is_nse_bse_trading_day(now.date()):
