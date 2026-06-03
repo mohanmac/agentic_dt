@@ -194,6 +194,13 @@ class TradingEngine:
             except Exception as e:
                 log.exception("engine tick failed")
                 self._log(f"Tick error: {e}", "error")
+            # Advance open brackets every iteration (place exits once entries fill,
+            # run OCO) regardless of phase, so exits are managed right up to close.
+            try:
+                from app.core.bracket_manager import get_bracket_manager
+                get_bracket_manager().poll()
+            except Exception:
+                log.exception("bracket poll failed")
             interval = 5 if self._phase == PHASE_ACTIVE else 30
             self._stop_event.wait(interval)
 
@@ -255,8 +262,12 @@ class TradingEngine:
             self._log(f"Scan failed: {e}", "error")
 
     def _auto_place_top_candidates(self, cands: List[Any], capital: float) -> None:
-        """Place bracket BUY for top candidates that pass risk checks."""
-        from app.core.live_broker import LiveBroker
+        """Open a managed intraday bracket for top candidates that pass risk checks.
+
+        Uses BracketManager (supported MIS entry + target/stop exits), which also
+        gives us a DRY-RUN mode when ENABLE_LIVE_TRADING is off — no real orders.
+        """
+        from app.core.bracket_manager import get_bracket_manager
         from app.core.market_calendar import can_place_nse_bse_equity_trade
 
         slots_left = self.risk_engine.config.max_trades_per_day - self.risk_engine.daily_stats.total_trades
@@ -270,7 +281,8 @@ class TradingEngine:
             self._log(f"Market gate failed pre-order: {msg_mkt}", "warn")
             return
 
-        broker = LiveBroker()
+        mgr = get_bracket_manager()
+        mode = "LIVE" if mgr.live else "DRY-RUN"
         for d in cands[: min(3, slots_left)]:
             if self.risk_engine.daily_stats.is_trading_halted:
                 self._log("Halted mid-batch — stopping execution", "warn")
@@ -282,15 +294,20 @@ class TradingEngine:
                 self._log(f"Skip {d.stock}: {msg_risk}", "warn")
                 continue
             try:
-                order = broker.place_bracket_buy(
+                b = mgr.open_bracket(
                     symbol=d.stock,
                     quantity=int(d.quantity),
-                    limit_price=float(d.entry_price),
-                    stop_loss_price=float(d.stop_loss),
+                    entry_price=float(d.entry_price),
+                    stop_price=float(d.stop_loss),
                     target_price=float(d.target),
                 )
+                if b is None:
+                    self._log(f"Skip {d.stock}: bracket already active", "warn")
+                    continue
                 self.risk_engine.daily_stats.total_trades += 1
-                oid = getattr(order, "order_id", order)
-                self._log(f"AUTO BUY {d.stock} qty={d.quantity} oid={oid}")
+                self._log(
+                    f"{mode} BUY {d.stock} qty={d.quantity} entry=₹{d.entry_price:.2f} "
+                    f"tgt=₹{d.target:.2f} sl=₹{d.stop_loss:.2f} id={b.entry_id}"
+                )
             except Exception as e:
                 self._log(f"AUTO order failed {d.stock}: {e}", "error")

@@ -426,8 +426,14 @@ def sidebar_engine_controls() -> None:
         )
         if new_auto != snap.auto_execute:
             get_engine().set_auto_execute(new_auto)
-        if new_auto:
-            st.sidebar.warning("⚠️ Autonomous trading ON — engine places real orders automatically.")
+        live = bool(getattr(settings, "ENABLE_LIVE_TRADING", False))
+        if new_auto and live:
+            st.sidebar.warning("⚠️ Autonomous trading ON · **LIVE** — engine places **REAL** orders automatically.")
+        elif new_auto:
+            st.sidebar.info(
+                "Autonomous trading ON · **DRY-RUN** — orders are simulated, **no real money**. "
+                "Set `ENABLE_LIVE_TRADING=true` in Secrets to trade for real."
+            )
         else:
             st.sidebar.caption("Paused — engine scans only; you place manually from Signals.")
     except Exception as e:
@@ -817,6 +823,46 @@ def place_bracket_manually(d) -> None:
         st.error(f"Order failed: {e}")
 
 
+def brackets_panel() -> None:
+    """Live view of managed brackets (entry → target/stop → done) so the full
+    buy→sell cycle is visible, in both DRY-RUN and LIVE mode."""
+    st.subheader("Brackets (entry → target/stop)")
+    try:
+        from app.core.bracket_manager import get_bracket_manager
+        mgr = get_bracket_manager()
+        rows = mgr.snapshot()
+        mode = "LIVE" if mgr.live else "DRY-RUN (simulated)"
+    except Exception as e:
+        st.caption(f"Bracket manager unavailable: {e}")
+        return
+    st.caption(f"Mode: **{mode}**")
+    if not rows:
+        st.caption("No brackets yet today.")
+        return
+    state_icon = {
+        "ENTRY_PENDING": "⏳ entry pending",
+        "IN_POSITION": "🟢 in position (target+stop live)",
+        "DONE": "✅ closed",
+        "FAILED": "🛑 entry failed",
+    }
+    st.dataframe(
+        [
+            {
+                "Symbol": r["symbol"],
+                "Qty": r["qty"],
+                "Entry": r["entry"],
+                "Target": r["target"],
+                "Stop": r["stop"],
+                "State": state_icon.get(r["state"], r["state"]),
+                "Note": r["note"],
+            }
+            for r in rows
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
 def activity_feed(snap) -> None:
     st.subheader("Activity (engine)")
     if not snap.activity:
@@ -880,6 +926,7 @@ def dashboard() -> None:
             safe("guardrails", guardrails_panel)
     with right:
         safe("positions", positions_panel)
+        safe("brackets", brackets_panel)
         safe("activity", activity_feed, snap)
 
 
@@ -961,6 +1008,14 @@ try:
     bootstrap_auth()
     try_restore_session()
     auto_logoff_after_close()
+    # Advance managed brackets on each render too, so manual trades placed while
+    # the engine loop isn't running still get their exits managed (idempotent).
+    if ss.authed:
+        try:
+            from app.core.bracket_manager import get_bracket_manager
+            get_bracket_manager().poll()
+        except Exception:
+            log.exception("render bracket poll failed")
     _boot_status.empty()
     st.caption(f"Real-money · {datetime.now().strftime('%H:%M:%S')}")
     sidebar()

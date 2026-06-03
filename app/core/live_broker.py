@@ -134,43 +134,42 @@ class LiveBroker:
         target_price: float,
     ) -> Optional[PaperOrder]:
         """
-        MIS bracket order: limit entry with fixed target and stop (absolute ₹ move per share).
+        Intraday bracket: limit MIS entry, then a target LIMIT + stop SL-M exit
+        once the entry fills, with OCO cancellation. Zerodha discontinued native
+        Bracket Orders (VARIETY_BO) in 2020 — the constant no longer exists in
+        kiteconnect — so this delegates to BracketManager, which composes the
+        bracket from supported order types and manages the exits via poll().
         """
+        ok, msg = can_place_nse_bse_equity_trade()
+        if not ok:
+            raise RuntimeError(msg)
+        from app.core.bracket_manager import get_bracket_manager
+
+        mgr = get_bracket_manager()
+        b = mgr.open_bracket(
+            symbol=symbol,
+            quantity=int(quantity),
+            entry_price=float(limit_price),
+            stop_price=float(stop_loss_price),
+            target_price=float(target_price),
+        )
+        if b is None:
+            raise RuntimeError(f"An active bracket already exists for {symbol}")
+        # Advance immediately in case the entry fills fast (e.g. marketable limit).
         try:
-            self.kite = zerodha_auth.get_kite_instance()
-            ok, msg = can_place_nse_bse_equity_trade()
-            if not ok:
-                raise RuntimeError(msg)
-            sq = round(max(target_price - limit_price, 0.05), 2)
-            sl = round(max(limit_price - stop_loss_price, 0.05), 2)
-            order_id = self.kite.place_order(
-                variety=self.kite.VARIETY_BO,
-                exchange=self.kite.EXCHANGE_NSE,
-                tradingsymbol=symbol,
-                transaction_type=self.kite.TRANSACTION_TYPE_BUY,
-                quantity=int(quantity),
-                product=self.kite.PRODUCT_MIS,
-                order_type=self.kite.ORDER_TYPE_LIMIT,
-                price=round(limit_price, 2),
-                validity=self.kite.VALIDITY_DAY,
-                squareoff=sq,
-                stoploss=sl,
-                trailing_stoploss=0,
-            )
-            logger.info(f"Live BRACKET BUY {symbol} oid={order_id} sq={sq} sl={sl}")
-            return PaperOrder(
-                order_id=str(order_id),
-                symbol=symbol,
-                transaction_type="BUY",
-                quantity=quantity,
-                price=limit_price,
-                status="BRACKET_PENDING",
-                timestamp=datetime.datetime.now(),
-                brokerage_est=0.0,
-            )
-        except Exception as e:
-            logger.error(f"Bracket order failed {symbol}: {e}")
-            raise e
+            mgr.poll()
+        except Exception:
+            logger.exception("bracket poll after open failed")
+        return PaperOrder(
+            order_id=b.entry_id,
+            symbol=symbol,
+            transaction_type="BUY",
+            quantity=quantity,
+            price=limit_price,
+            status=b.state,
+            timestamp=datetime.datetime.now(),
+            brokerage_est=0.0,
+        )
 
     def get_portfolio(self) -> List[PaperPosition]:
         """
