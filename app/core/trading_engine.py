@@ -97,8 +97,11 @@ class TradingEngine:
     def enable(self) -> None:
         with self._lock:
             self._enabled = True
+            # Autonomous by design: enabling the bot arms auto-execution intrinsically,
+            # so it scans AND places orders during the active phase with no manual toggle.
+            self._auto_execute = True
         self._start_thread()
-        self._log("Bot ENABLED — auto-arms at 9:15 IST on trading days")
+        self._log("Bot ENABLED — autonomous (auto-execute ON); auto-arms at 9:15 IST on trading days")
 
     def disable(self) -> None:
         with self._lock:

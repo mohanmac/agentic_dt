@@ -383,7 +383,6 @@ def sidebar_engine_controls() -> None:
                 get_engine().set_auto_execute(False)
                 ss["auto_exec_checkbox"] = False
                 if ss.agents_running:
-                    get_orch().set_auto_execute(False)
                     get_orch().shutdown()
                     ss.agents_running = False
         else:
@@ -391,39 +390,40 @@ def sidebar_engine_controls() -> None:
                 "▶️ Enable bot", type="primary", use_container_width=True, key="enable_bot_btn"
             ):
                 log.info("UI: Enable bot clicked")
+                # enable() arms auto-execution intrinsically — fully autonomous,
+                # no second click needed. The TradingEngine is the SOLE executor;
+                # the 12 agents run for monitoring/signals only. We deliberately do
+                # NOT arm bus["auto_execute"], so agent08 never places a duplicate
+                # bracket order for the same setup.
                 get_engine().enable()
                 if not ss.agents_running:
                     get_orch().start_all()
                     ss.agents_running = True
-                # User mandate: enabling the bot also arms auto-execution so it
-                # places trades on its own during the active phase. start_all()
-                # resets the bus flag, so set both AFTER it.
-                get_engine().set_auto_execute(True)
-                get_orch().set_auto_execute(True)
                 ss["auto_exec_checkbox"] = True
     except Exception as e:
         log.exception("Bot toggle failed")
         st.sidebar.error(f"Toggle failed: {e}")
 
-    # Auto-execute toggle. The engine is the source of truth; we mirror it into
-    # the widget's own session_state key (no `value=`) so a programmatic flip —
-    # e.g. auto-ON when the bot is enabled — and a user click never fight and
-    # silently revert each other across reruns.
+    # Autonomous-trading pause switch. Defaults ON the moment the bot is enabled
+    # (engine.enable() sets it). Unticking pauses order placement → scan-only,
+    # without disabling the bot or the agents. The engine is the source of truth;
+    # we mirror it into the widget's session_state key (no `value=`) so a
+    # programmatic flip and a user click never silently revert each other.
     try:
         ss.setdefault("auto_exec_checkbox", snap.auto_execute)
         new_auto = st.sidebar.checkbox(
-            "Auto-execute orders",
+            "Autonomous trading (auto-execute)",
             key="auto_exec_checkbox",
-            help="When ON, the engine places top candidates automatically during the active phase. "
-                 "When OFF, you place each trade manually from Signals.",
+            help="ON (default once the bot is enabled): the engine places top candidates "
+                 "automatically during the active phase — no manual step. Untick only to "
+                 "pause auto-orders and place manually from Signals.",
         )
         if new_auto != snap.auto_execute:
             get_engine().set_auto_execute(new_auto)
-            get_orch().set_auto_execute(new_auto)
         if new_auto:
-            st.sidebar.warning("⚠️ Auto-execute is ON — engine will place real orders.")
+            st.sidebar.warning("⚠️ Autonomous trading ON — engine places real orders automatically.")
         else:
-            st.sidebar.caption("Auto-execute OFF — engine scans only; you place manually.")
+            st.sidebar.caption("Paused — engine scans only; you place manually from Signals.")
     except Exception as e:
         log.exception("Auto-execute toggle failed")
         st.sidebar.error(f"Auto-exec toggle failed: {e}")

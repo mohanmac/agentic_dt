@@ -51,7 +51,10 @@ class Orchestrator:
         ]
 
     def start_all(self) -> None:
-        # Execution starts disabled — must be flipped via the UI or set_auto_execute.
+        # agent08 stays disarmed: the TradingEngine is the sole order executor, so
+        # leaving bus["auto_execute"] False prevents the agent pipeline from placing
+        # a DUPLICATE bracket order for the same setup. The 12 agents run for
+        # monitoring/signals/risk-alerts only.
         self.bus.set("auto_execute", False)
         for agent in self.agents:
             agent.start()
