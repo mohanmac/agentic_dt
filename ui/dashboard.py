@@ -299,6 +299,15 @@ def sidebar() -> None:
     )
     login_url = zerodha_auth.generate_login_url()
     st.sidebar.link_button("Login to Kite", login_url, use_container_width=True, type="primary")
+    # Auto token-capture only works if Kite redirects back to THIS app. Show the
+    # exact Redirect URL that must be registered at developers.kite.trade, so a
+    # mismatch (which forces manual token paste) is obvious.
+    st.sidebar.caption(
+        f"⚠️ For one-click login, the **Redirect URL** in your Kite developer "
+        f"console must be exactly:\n\n`{settings.KITE_REDIRECT_URL.strip()}`\n\n"
+        "If it points anywhere else, the token won't return here and you'll have "
+        "to paste it manually below."
+    )
 
     # Manual fallback: if Kite's redirect URL points somewhere this app can't
     # receive (e.g. a dead localhost callback), paste the request_token here.
