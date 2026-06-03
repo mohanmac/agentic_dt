@@ -8,8 +8,12 @@ Once you click **Enable bot**, the background TradingEngine takes over:
   • 10:15–14:45      — scans every 5s; trades if Auto-execute is ON
   • 14:45–15:30      — no new entries; broker MIS auto-squares-off
 
-Auto-execute defaults to OFF — when OFF, the engine still scans and the UI
-shows candidates so you can place orders manually.
+Enabling the bot turns Auto-execute ON automatically (real orders during the
+active phase). Untick "Auto-execute orders" in the sidebar to fall back to
+scan-only mode, where the UI shows candidates for manual placement.
+
+The dashboard auto-refreshes every 15s and auto-logs-off at 15:40 IST (after
+broker MIS square-off) on trading days.
 """
 from __future__ import annotations
 
@@ -376,7 +380,10 @@ def sidebar_engine_controls() -> None:
             if st.sidebar.button("⏸ Disable bot", use_container_width=True, key="disable_bot_btn"):
                 log.info("UI: Disable bot clicked")
                 get_engine().disable()
+                get_engine().set_auto_execute(False)
+                ss["auto_exec_checkbox"] = False
                 if ss.agents_running:
+                    get_orch().set_auto_execute(False)
                     get_orch().shutdown()
                     ss.agents_running = False
         else:
@@ -388,15 +395,24 @@ def sidebar_engine_controls() -> None:
                 if not ss.agents_running:
                     get_orch().start_all()
                     ss.agents_running = True
+                # User mandate: enabling the bot also arms auto-execution so it
+                # places trades on its own during the active phase. start_all()
+                # resets the bus flag, so set both AFTER it.
+                get_engine().set_auto_execute(True)
+                get_orch().set_auto_execute(True)
+                ss["auto_exec_checkbox"] = True
     except Exception as e:
         log.exception("Bot toggle failed")
         st.sidebar.error(f"Toggle failed: {e}")
 
-    # Auto-execute safety toggle (only meaningful when enabled)
+    # Auto-execute toggle. The engine is the source of truth; we mirror it into
+    # the widget's own session_state key (no `value=`) so a programmatic flip —
+    # e.g. auto-ON when the bot is enabled — and a user click never fight and
+    # silently revert each other across reruns.
     try:
+        ss.setdefault("auto_exec_checkbox", snap.auto_execute)
         new_auto = st.sidebar.checkbox(
             "Auto-execute orders",
-            value=snap.auto_execute,
             key="auto_exec_checkbox",
             help="When ON, the engine places top candidates automatically during the active phase. "
                  "When OFF, you place each trade manually from Signals.",
@@ -421,15 +437,15 @@ AGENT_NAMES = [
 
 
 def _agents_fragment() -> None:
-    """Renders the 12-agent panel. Was previously @st.fragment(run_every="1s")
-    but that broke first-render on Streamlit Cloud; user clicks Refresh button now."""
+    """Renders the 12-agent panel. Refreshes with the page every 15s (see
+    auto_refresh()); a per-fragment run_every broke first-render on Streamlit Cloud."""
     st.subheader("Agent system (12)")
     if not ss.agents_running:
         st.caption("Idle — Enable bot to start the 12-agent loop.")
         return
     health = get_orch().bus.get("health") or {}
     ok = sum(1 for v in health.values() if v.get("status") == "OK")
-    st.caption(f"{ok}/{len(AGENT_NAMES)} OK · animations show live ticks")
+    st.caption(f"{ok}/{len(AGENT_NAMES)} OK · refreshes every 15s")
 
     for name in AGENT_NAMES:
         last = get_orch().bus.get(f"last_result:{name}")
@@ -848,11 +864,70 @@ def dashboard() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Auto-refresh + auto-logoff
+# ─────────────────────────────────────────────────────────────────────────────
+def auto_refresh(interval_ms: int = 15_000, key: str = "dash_autorefresh") -> None:
+    """Re-run the script every interval_ms so the 12-agent status, candidates and
+    countdowns stay live without a manual click.
+
+    Uses streamlit-autorefresh — a websocket-driven rerun, NOT a full browser
+    reload — so the Kite session/session_state survive and the KILL ALL button
+    stays responsive. Degrades to a hint if the component isn't installed.
+    """
+    try:
+        from streamlit_autorefresh import st_autorefresh
+        st_autorefresh(interval=interval_ms, key=key)
+    except Exception:
+        st.caption("⏳ Auto-refresh unavailable (install streamlit-autorefresh) — click any control to refresh.")
+
+
+def auto_logoff_after_close() -> None:
+    """At/after 15:40 IST on a trading day, stop the bot + agents and log off Kite.
+
+    15:40 is the post-square-off boundary (REGULAR_END 15:30 → CLOSING_START 15:40),
+    so MIS positions are already flat. Guarded to fire once per day, so a manual
+    re-login afterwards (to review the order book) won't be kicked out again.
+    """
+    if not ss.authed:
+        return
+    from datetime import time as _t
+    now = ist_now()
+    if not is_nse_bse_trading_day(now.date()):
+        return
+    if now.time() < _t(15, 40):
+        return
+    if ss.get("_auto_logged_off_date") == now.date().isoformat():
+        return
+    ss._auto_logged_off_date = now.date().isoformat()
+    try:
+        get_engine().disable()
+    except Exception:
+        log.exception("auto_logoff: engine.disable failed")
+    try:
+        if ss.agents_running:
+            get_orch().shutdown()
+            ss.agents_running = False
+    except Exception:
+        log.exception("auto_logoff: orchestrator shutdown failed")
+    try:
+        zerodha_auth.logout()
+    except Exception:
+        log.exception("auto_logoff: kite logout failed")
+    ss.authed = False
+    ss.profile = None
+    log.info("auto_logoff_after_close at %s IST", now.strftime("%H:%M:%S"))
+    st.toast("Exchange closed (15:40 IST) — bot stopped and logged out.", icon="🔒")
+    st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Render
 # ─────────────────────────────────────────────────────────────────────────────
 try:
+    auto_refresh()
     bootstrap_auth()
     try_restore_session()
+    auto_logoff_after_close()
     _boot_status.empty()
     st.caption(f"Real-money · {datetime.now().strftime('%H:%M:%S')}")
     sidebar()
