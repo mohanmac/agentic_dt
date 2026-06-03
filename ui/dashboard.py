@@ -436,6 +436,18 @@ AGENT_NAMES = [
 ]
 
 
+def _agent_action_text(last) -> str:
+    """One-line 'what this agent just did', derived from its last AgentResult."""
+    if last is None:
+        return "waiting for first tick…"
+    if not getattr(last, "ok", True):
+        return f"⚠ {getattr(last, 'error', None) or 'tick failed'}"
+    p = getattr(last, "payload", None)
+    if isinstance(p, dict) and p:
+        return " · ".join(f"{k}={v}" for k, v in p.items())
+    return "ok"
+
+
 def _agents_fragment() -> None:
     """Renders the 12-agent panel. Refreshes with the page every 15s (see
     auto_refresh()); a per-fragment run_every broke first-render on Streamlit Cloud."""
@@ -445,7 +457,7 @@ def _agents_fragment() -> None:
         return
     health = get_orch().bus.get("health") or {}
     ok = sum(1 for v in health.values() if v.get("status") == "OK")
-    st.caption(f"{ok}/{len(AGENT_NAMES)} OK · refreshes every 15s")
+    st.caption(f"{ok}/{len(AGENT_NAMES)} OK · auto-refreshes every 15s")
 
     for name in AGENT_NAMES:
         last = get_orch().bus.get(f"last_result:{name}")
@@ -466,8 +478,10 @@ def _agents_fragment() -> None:
             card_link = "<span style='color:#888'>card (local API)</span>"
         else:
             card_link = f"<a href='http://127.0.0.1:8000/agents/{name}/card.json' target='_blank' style='color:#3b82f6; text-decoration:none;'>card</a>"
+        action = _agent_action_text(last)
         st.markdown(
-            f"<div class='agent-line'>{dot}{name}{suffix} · {card_link}</div>",
+            f"<div class='agent-line'>{dot}{name}{suffix} · {card_link}</div>"
+            f"<div class='agent-line' style='margin-left:15px;color:#9aa0a6'>↳ {action}</div>",
             unsafe_allow_html=True,
         )
 
