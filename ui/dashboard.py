@@ -287,18 +287,15 @@ def sidebar() -> None:
         sidebar_strategies()
         return
 
-    # Not logged in
+    # Not logged in. No username/password fields here by design — Zerodha collects
+    # credentials + 2FA on its OWN page. We just send the user there; on the
+    # redirect back, bootstrap_auth() reads request_token from the URL and
+    # exchanges it for an access_token automatically (no manual step needed).
     st.sidebar.subheader("Login")
-    st.sidebar.text_input("User ID", placeholder="e.g. RVQ434", key="login_user_id", autocomplete="off")
-    st.sidebar.text_input(
-        "Password (entered on Kite's page)",
-        placeholder="will be filled on Kite",
-        key="login_password",
-        autocomplete="off",
-    )
     st.sidebar.caption(
-        "Click **Login to Kite** — Zerodha verifies credentials on their own site, "
-        "then redirects back. Your password is never sent through this app."
+        "Click **Login to Kite** — Zerodha verifies your credentials + 2FA on their "
+        "own site, then redirects back here. The app auto-reads the token from the "
+        "redirect URL and signs you in. Your password is never seen by this app."
     )
     login_url = zerodha_auth.generate_login_url()
     st.sidebar.link_button("Login to Kite", login_url, use_container_width=True, type="primary")
