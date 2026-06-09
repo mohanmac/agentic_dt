@@ -21,7 +21,7 @@ class DecisionAgent(BaseAgent):
         {"id": "soft_weight_ml", "description": "Add 15% ML score, 10% sentiment score."},
     ]
     uses_llm = False
-    min_confidence = 75
+    min_confidence = 68
 
     def _vote(self, store: dict | None, sym: str) -> tuple[bool, int]:
         if not store:

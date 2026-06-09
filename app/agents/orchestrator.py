@@ -60,6 +60,20 @@ class Orchestrator:
             agent.start()
         log.info("orchestrator_started agents=%d", len(self.agents))
 
+    @property
+    def running(self) -> bool:
+        """True when the agent threads are actually alive.
+
+        This is the process-wide source of truth, independent of any per-session
+        UI flag. Because the Orchestrator is an @st.cache_resource singleton, a
+        fresh browser session can read this to learn the loop is already running
+        rather than wrongly showing 'Idle'.
+        """
+        return any(
+            getattr(a, "_thread", None) is not None and a._thread.is_alive()
+            for a in self.agents
+        )
+
     def shutdown(self) -> None:
         for agent in self.agents:
             agent.stop()

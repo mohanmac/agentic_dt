@@ -381,6 +381,15 @@ def sidebar_engine_controls() -> None:
     st.sidebar.subheader("Bot controls")
     snap = get_engine().snapshot()
 
+    # Reconcile process-global state vs this browser session. The engine + orchestrator
+    # are @st.cache_resource singletons (process-wide), but the bot can be enabled in one
+    # session while a fresh session/reload starts with ss.agents_running = False. That left
+    # the UI wedged: button shows "Disable bot" (engine enabled) yet the panel shows "Idle"
+    # with no way to start the loop. Heal it: if the bot is enabled but the agent loop isn't
+    # actually running, start it (start_all/agent.start are idempotent, so this is safe).
+    if snap.enabled and not get_orch().running:
+        get_orch().start_all()
+
     try:
         if snap.enabled:
             if st.sidebar.button("⏸ Disable bot", use_container_width=True, key="disable_bot_btn"):
@@ -388,9 +397,12 @@ def sidebar_engine_controls() -> None:
                 get_engine().disable()
                 get_engine().set_auto_execute(False)
                 ss["auto_exec_checkbox"] = False
-                if ss.agents_running:
+                # Stop the loop based on the real process-wide state, not this
+                # session's flag — a session that didn't start it must still be able
+                # to stop it. Clear ss.agents_running so auto_logoff won't fire later.
+                if get_orch().running:
                     get_orch().shutdown()
-                    ss.agents_running = False
+                ss.agents_running = False
         else:
             if st.sidebar.button(
                 "▶️ Enable bot", type="primary", use_container_width=True, key="enable_bot_btn"
@@ -402,9 +414,11 @@ def sidebar_engine_controls() -> None:
                 # NOT arm bus["auto_execute"], so agent08 never places a duplicate
                 # bracket order for the same setup.
                 get_engine().enable()
-                if not ss.agents_running:
+                if not get_orch().running:
                     get_orch().start_all()
-                    ss.agents_running = True
+                # Mark THIS session as having armed the bot — auto_logoff keys off this
+                # so an after-hours review session is never force-logged-off.
+                ss.agents_running = True
                 ss["auto_exec_checkbox"] = True
     except Exception as e:
         log.exception("Bot toggle failed")
@@ -464,7 +478,10 @@ def _agents_fragment() -> None:
     """Renders the 12-agent panel. Refreshes with the page every 15s (see
     auto_refresh()); a per-fragment run_every broke first-render on Streamlit Cloud."""
     st.subheader("Agent system (12)")
-    if not ss.agents_running:
+    # Read the real, process-wide loop state — not ss.agents_running, which is a
+    # per-session flag (kept only as the auto-logoff guard) and is False on a fresh
+    # session even while the loop is running from another session in the same process.
+    if not get_orch().running:
         st.caption("Idle — Enable bot to start the 12-agent loop.")
         return
     health = get_orch().bus.get("health") or {}
