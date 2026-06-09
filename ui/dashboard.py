@@ -187,6 +187,29 @@ def get_orch():
         st.stop()
 
 
+def orch_running() -> bool:
+    """Is the 12-agent loop actually running? (process-wide truth)
+
+    Computed from agent thread liveness rather than orch.running, because the
+    Orchestrator is an @st.cache_resource singleton: on a hot redeploy Streamlit
+    may hand back an instance built from the PREVIOUS code revision (which lacks
+    the `running` property), so `orch.running` would raise AttributeError. The
+    `agents` list and each agent's `_thread` have existed all along, so reading
+    them works against a stale cached instance too. Falls back to the property
+    if present (covers any future agent-list refactor)."""
+    orch = get_orch()
+    prop = getattr(type(orch), "running", None)
+    if isinstance(prop, property):
+        try:
+            return bool(orch.running)
+        except Exception:
+            pass
+    return any(
+        getattr(a, "_thread", None) is not None and a._thread.is_alive()
+        for a in getattr(orch, "agents", [])
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Sidebar
 # ─────────────────────────────────────────────────────────────────────────────
@@ -387,7 +410,7 @@ def sidebar_engine_controls() -> None:
     # the UI wedged: button shows "Disable bot" (engine enabled) yet the panel shows "Idle"
     # with no way to start the loop. Heal it: if the bot is enabled but the agent loop isn't
     # actually running, start it (start_all/agent.start are idempotent, so this is safe).
-    if snap.enabled and not get_orch().running:
+    if snap.enabled and not orch_running():
         get_orch().start_all()
 
     try:
@@ -400,7 +423,7 @@ def sidebar_engine_controls() -> None:
                 # Stop the loop based on the real process-wide state, not this
                 # session's flag — a session that didn't start it must still be able
                 # to stop it. Clear ss.agents_running so auto_logoff won't fire later.
-                if get_orch().running:
+                if orch_running():
                     get_orch().shutdown()
                 ss.agents_running = False
         else:
@@ -414,7 +437,7 @@ def sidebar_engine_controls() -> None:
                 # NOT arm bus["auto_execute"], so agent08 never places a duplicate
                 # bracket order for the same setup.
                 get_engine().enable()
-                if not get_orch().running:
+                if not orch_running():
                     get_orch().start_all()
                 # Mark THIS session as having armed the bot — auto_logoff keys off this
                 # so an after-hours review session is never force-logged-off.
@@ -481,7 +504,7 @@ def _agents_fragment() -> None:
     # Read the real, process-wide loop state — not ss.agents_running, which is a
     # per-session flag (kept only as the auto-logoff guard) and is False on a fresh
     # session even while the loop is running from another session in the same process.
-    if not get_orch().running:
+    if not orch_running():
         st.caption("Idle — Enable bot to start the 12-agent loop.")
         return
     health = get_orch().bus.get("health") or {}
