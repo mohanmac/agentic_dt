@@ -98,8 +98,9 @@ class TradingEngine:
     def enable(self) -> None:
         with self._lock:
             self._enabled = True
+            self._auto_execute = True
         self._start_thread()
-        self._log("Bot ENABLED — monitoring/scanning; turn Auto-execute ON to place orders")
+        self._log("Bot ENABLED — auto-execute ON; will place orders during the active phase")
 
     def disable(self) -> None:
         with self._lock:

@@ -8,8 +8,8 @@ Once you click **Enable bot**, the background TradingEngine takes over:
   • 10:15–14:45      — scans every 5s; trades if Auto-execute is ON
   • 14:45–15:30      — no new entries; broker MIS auto-squares-off
 
-Enabling the bot starts monitoring/scanning only. Real orders require the
-separate **Auto-execute orders** confirmation in the sidebar.
+Enabling the bot starts monitoring/scanning and turns **Auto-execute orders**
+ON automatically; live broker orders still require `ENABLE_LIVE_TRADING=true`.
 
 The dashboard auto-refreshes every 15s and auto-logs-off at 15:40 IST (after
 broker MIS square-off) on trading days.
@@ -436,15 +436,15 @@ def sidebar_engine_controls() -> None:
                 # Mark THIS session as having armed the bot — auto_logoff keys off this
                 # so an after-hours review session is never force-logged-off.
                 ss.agents_running = True
-                ss["auto_exec_checkbox"] = False
-                ss["auto_exec_confirm"] = False
+                ss["auto_exec_checkbox"] = True
+                ss["auto_exec_confirm"] = True
     except Exception as e:
         log.exception("Bot toggle failed")
         st.sidebar.error(f"Toggle failed: {e}")
 
-    # Real-order gate. Enabling the bot is scan-only; orders require explicit
-    # confirmation plus this checkbox. The engine is the sole executor; agent08
-    # remains disarmed through bus["auto_execute"] to avoid duplicate orders.
+    # Real-order gate. Enabling the bot turns this on automatically. The engine
+    # is the sole executor; agent08 remains disarmed through bus["auto_execute"]
+    # to avoid duplicate orders.
     try:
         ss.setdefault("auto_exec_checkbox", snap.auto_execute)
         ss.setdefault("auto_exec_confirm", False)
@@ -460,7 +460,7 @@ def sidebar_engine_controls() -> None:
             key="auto_exec_checkbox",
             disabled=not snap.enabled,
             help="When ON, the engine places approved candidates automatically during "
-                 "10:15–14:45 IST. Keep OFF for monitoring/manual placement.",
+                 "10:15–14:45 IST. Enable bot turns this ON automatically.",
         )
         if new_auto and not ss.get("auto_exec_confirm"):
             st.sidebar.error("Confirm the Auto-execute risk acknowledgement first.")
