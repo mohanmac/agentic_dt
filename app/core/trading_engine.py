@@ -6,13 +6,13 @@ Daily phases (IST):
   • setup       (09:15–09:30)  : auto-armed, no trades — watchlist warm-up
   • noisy_open  (09:30–10:15)  : auto-armed, observation only (skip trades)
   • active      (10:15–14:45)  : full scan + (optionally) auto-execute
-  • closing     (14:45–15:25)  : no new entries; let broker MIS handle exits
+  • closing     (14:45–15:25)  : no new entries; force-exit tracked brackets at 15:15
   • after_15_25 (15:25–15:30)  : final close grace; nothing new
   • closed      (else / holiday): disarmed
 
 Singleton: TradingEngine() — first call constructs + spawns the thread.
 Safety: auto_execute defaults to False; orders are placed only when explicitly
-enabled by the user.
+confirmed in the dashboard.
 """
 from __future__ import annotations
 
@@ -91,17 +91,15 @@ class TradingEngine:
         self._trades_today = 0
         self.risk_engine = RiskEngine()
         self._thread: Optional[threading.Thread] = None
+        self._force_square_off_date: str | None = None
         # Thread is started lazily on the first .enable() call so module import is cheap.
 
     # ── Public controls ─────────────────────────────────────────────────────
     def enable(self) -> None:
         with self._lock:
             self._enabled = True
-            # Autonomous by design: enabling the bot arms auto-execution intrinsically,
-            # so it scans AND places orders during the active phase with no manual toggle.
-            self._auto_execute = True
         self._start_thread()
-        self._log("Bot ENABLED — autonomous (auto-execute ON); auto-arms at 9:15 IST on trading days")
+        self._log("Bot ENABLED — monitoring/scanning; turn Auto-execute ON to place orders")
 
     def disable(self) -> None:
         with self._lock:
@@ -194,6 +192,11 @@ class TradingEngine:
             except Exception as e:
                 log.exception("engine tick failed")
                 self._log(f"Tick error: {e}", "error")
+            try:
+                self._force_square_off_if_due()
+            except Exception as e:
+                log.exception("force square-off check failed")
+                self._log(f"Force square-off check failed: {e}", "error")
             # Advance open brackets every iteration (place exits once entries fill,
             # run OCO) regardless of phase, so exits are managed right up to close.
             try:
@@ -243,7 +246,8 @@ class TradingEngine:
                 return
 
             if phase in (PHASE_CLOSING, PHASE_AFTER_15_25):
-                # No new entries — broker MIS auto-square-off at 15:30 handles exits.
+                # No new entries. _force_square_off_if_due() exits tracked
+                # brackets at/after the configured 15:15 IST safety cutoff.
                 return
 
         # Outside the lock: PHASE_ACTIVE work (scan + optional execute)
@@ -287,6 +291,12 @@ class TradingEngine:
             if self.risk_engine.daily_stats.is_trading_halted:
                 self._log("Halted mid-batch — stopping execution", "warn")
                 break
+            if mgr.active_count() >= self.risk_engine.config.max_open_positions:
+                self._log(
+                    f"Max open positions ({self.risk_engine.config.max_open_positions}) reached — no new entries",
+                    "warn",
+                )
+                break
             notional = d.entry_price * d.quantity
             sl_pct = d.risk_pct / 100.0
             ok_risk, msg_risk = self.risk_engine.can_place_trade(notional, assumed_sl_pct=sl_pct)
@@ -311,3 +321,37 @@ class TradingEngine:
                 )
             except Exception as e:
                 self._log(f"AUTO order failed {d.stock}: {e}", "error")
+
+    def _force_square_off_if_due(self) -> None:
+        """Bot-side final exit for tracked brackets before broker MIS square-off.
+
+        Broker square-off remains the last backstop, but waiting for it leaves too
+        much uncertainty. This fires once per trading day at settings.FORCE_EXIT_TIME
+        (default 15:15 IST), only when the bot has been enabled.
+        """
+        from app.core.config import settings
+        from app.core.market_calendar import is_nse_bse_trading_day
+
+        now = datetime.now(IST)
+        if not is_nse_bse_trading_day(now.date()):
+            return
+        if now.time() < dtime(settings.FORCE_EXIT_TIME_HOUR, settings.FORCE_EXIT_TIME_MINUTE):
+            return
+        day_key = now.date().isoformat()
+        with self._lock:
+            if not self._enabled:
+                return
+            if self._force_square_off_date == day_key:
+                return
+            self._force_square_off_date = day_key
+            self._auto_execute = False
+
+        from app.core.bracket_manager import get_bracket_manager
+
+        result = get_bracket_manager().force_square_off()
+        self._log(
+            "FORCE SQUARE-OFF 15:15 — "
+            f"closed={result.get('closed', 0)} cancelled={result.get('cancelled', 0)} "
+            f"failures={len(result.get('failures', []))}",
+            "warn",
+        )

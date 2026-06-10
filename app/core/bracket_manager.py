@@ -11,7 +11,8 @@ with currently-supported orders and manages the exit lifecycle itself:
         TARGET : regular MIS LIMIT sell @ target
         STOP   : regular MIS SL-M  sell @ trigger = stop
   3. OCO   : when one exit fills, the sibling is cancelled.
-  4. EOD   : the broker auto-squares MIS positions (~15:20 IST) as a backstop.
+  4. EOD   : the bot force-exits tracked brackets at 15:15 IST; broker
+             auto-square-off remains the last backstop.
 
 Two modes, chosen by ``settings.ENABLE_LIVE_TRADING``:
   • live=True  → real ``kite.place_order`` / ``orders`` / ``cancel_order``.
@@ -46,7 +47,7 @@ _EXCHANGE = "NSE"
 _PRODUCT_MIS = "MIS"
 _VALIDITY_DAY = "DAY"
 _BUY, _SELL = "BUY", "SELL"
-_LIMIT, _SLM = "LIMIT", "SL-M"
+_LIMIT, _SLM, _MARKET = "LIMIT", "SL-M", "MARKET"
 _COMPLETE = "COMPLETE"
 _DEAD = ("REJECTED", "CANCELLED")
 
@@ -225,6 +226,67 @@ class BracketManager:
                 b.state = DONE
                 b.note = "stop hit (loss capped)"
                 log.info("STOP hit %s — target cancelled", b.symbol)
+
+    def force_square_off(self) -> dict:
+        """Cancel outstanding bracket legs and flatten tracked MIS positions.
+
+        Called once near the end of the intraday session (default 15:15 IST).
+        In live mode it sends MARKET SELL MIS orders for tracked symbols with
+        positive net quantity. In dry-run it marks active brackets as DONE so the
+        UI and open-position cap free up cleanly.
+        """
+        result = {"closed": 0, "cancelled": 0, "failures": []}
+        with self._lock:
+            active = [b for b in self._brackets.values() if b.state in (ENTRY_PENDING, IN_POSITION)]
+            if not active:
+                return result
+
+            if not self.live:
+                for b in active:
+                    for oid in (b.entry_id, b.target_id, b.stop_id):
+                        o = self._sim_orders.get(oid)
+                        if o and o.get("status") == "OPEN":
+                            o["status"] = "CANCELLED"
+                            result["cancelled"] += 1
+                    b.state = DONE
+                    b.note = "force square-off simulated"
+                    result["closed"] += 1
+                return result
+
+            kite = self._kite()
+            positions: dict[str, int] = {}
+            try:
+                for p in (kite.positions().get("net") or []):
+                    sym = p.get("tradingsymbol")
+                    qty = int(p.get("quantity") or 0)
+                    if sym and qty > 0:
+                        positions[sym] = qty
+            except Exception as exc:
+                result["failures"].append(f"positions: {exc}")
+                log.exception("force square-off: positions failed")
+
+            for b in active:
+                for oid in (b.entry_id, b.target_id, b.stop_id):
+                    try:
+                        self._cancel(oid)
+                        if oid:
+                            result["cancelled"] += 1
+                    except Exception as exc:
+                        result["failures"].append(f"{b.symbol} cancel {oid}: {exc}")
+                qty = positions.get(b.symbol, 0)
+                if qty <= 0:
+                    b.state = DONE
+                    b.note = "force square-off: no live qty"
+                    continue
+                try:
+                    oid = self._place(symbol=b.symbol, txn=_SELL, qty=qty, order_type=_MARKET)
+                    b.state = DONE
+                    b.note = f"force square-off market sell {oid}"
+                    result["closed"] += 1
+                except Exception as exc:
+                    result["failures"].append(f"{b.symbol} square-off: {exc}")
+                    log.exception("force square-off failed %s", b.symbol)
+        return result
 
     def snapshot(self) -> List[dict]:
         with self._lock:

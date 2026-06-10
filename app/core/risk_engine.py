@@ -8,7 +8,7 @@ class RiskConfig:
     max_loss_per_day: float = 200.0       
     per_trade_max_loss_absolute: float = 70.0 # Trade Risk-Defined Strategies: with the 35% (~Rs700) notional in agent07, this allows stops up to ~10% instead of ~7.1% — lets ATR-based intraday stops clear the gate.
     min_capital_threshold: float = 1000.0  # DRY POWDER: Keep 50% of the 2000 INR as un-tradeable cash reserve
-    max_trades_per_day: int = 20
+    max_trades_per_day: int = 5
     max_open_positions: int = 2  # Enforced in agent07: caps concurrent open/pending positions (bracket-manager + portfolio aware). Distinct from max_trades_per_day (total entries/day).
     
     # Position & Exposure Limits (AVOID LEVERAGE)

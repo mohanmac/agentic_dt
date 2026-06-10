@@ -43,6 +43,12 @@ OPENAI_API_KEY = "sk-..."
 OPENAI_MODEL = "gpt-4o-mini"
 
 DAILY_CAPITAL = "2000"
+MAX_DAILY_LOSS = "200"
+MAX_TRADES_PER_DAY = "5"
+PER_TRADE_MAX_LOSS_ABSOLUTE = "70"
+ENABLE_LIVE_TRADING = "false"
+FORCE_EXIT_TIME_HOUR = "15"
+FORCE_EXIT_TIME_MINUTE = "15"
 ```
 
 4.  **Save** Secrets, then **Reboot app**.
@@ -50,6 +56,7 @@ DAILY_CAPITAL = "2000"
 ## 4. Important Changes for Cloud
 *   **Ollama** does not run on Streamlit Cloud — use `LLM_PROVIDER = "openai"` (or Gemini with `GOOGLE_API_KEY`).
 *   **Authentication**: `KITE_REDIRECT_URL` must be `https://proactive-agentic-dt.streamlit.app`, not `your-new-app.streamlit.app` or any other placeholder.
+*   **Live trading**: keep `ENABLE_LIVE_TRADING = "false"` for dry-runs. Set it to `"true"` only when you are ready for real Zerodha MIS orders, then reboot the app and explicitly turn on Auto-execute in the dashboard.
 *   **`.streamlit/config.toml`**: uses `fileWatcherType = "none"` to avoid inotify errors on Cloud.
 *   **Persistence**: Streamlit Cloud restarts your app frequently. The `data/` folder will be reset. Trade history (SQL/JSON) will not persist across reboots unless you use an external database (which is an advanced step).
 

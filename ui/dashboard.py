@@ -8,9 +8,8 @@ Once you click **Enable bot**, the background TradingEngine takes over:
   • 10:15–14:45      — scans every 5s; trades if Auto-execute is ON
   • 14:45–15:30      — no new entries; broker MIS auto-squares-off
 
-Enabling the bot turns Auto-execute ON automatically (real orders during the
-active phase). Untick "Auto-execute orders" in the sidebar to fall back to
-scan-only mode, where the UI shows candidates for manual placement.
+Enabling the bot starts monitoring/scanning only. Real orders require the
+separate **Auto-execute orders** confirmation in the sidebar.
 
 The dashboard auto-refreshes every 15s and auto-logs-off at 15:40 IST (after
 broker MIS square-off) on trading days.
@@ -431,48 +430,52 @@ def sidebar_engine_controls() -> None:
                 "▶️ Enable bot", type="primary", use_container_width=True, key="enable_bot_btn"
             ):
                 log.info("UI: Enable bot clicked")
-                # enable() arms auto-execution intrinsically — fully autonomous,
-                # no second click needed. The TradingEngine is the SOLE executor;
-                # the 12 agents run for monitoring/signals only. We deliberately do
-                # NOT arm bus["auto_execute"], so agent08 never places a duplicate
-                # bracket order for the same setup.
                 get_engine().enable()
                 if not orch_running():
                     get_orch().start_all()
                 # Mark THIS session as having armed the bot — auto_logoff keys off this
                 # so an after-hours review session is never force-logged-off.
                 ss.agents_running = True
-                ss["auto_exec_checkbox"] = True
+                ss["auto_exec_checkbox"] = False
+                ss["auto_exec_confirm"] = False
     except Exception as e:
         log.exception("Bot toggle failed")
         st.sidebar.error(f"Toggle failed: {e}")
 
-    # Autonomous-trading pause switch. Defaults ON the moment the bot is enabled
-    # (engine.enable() sets it). Unticking pauses order placement → scan-only,
-    # without disabling the bot or the agents. The engine is the source of truth;
-    # we mirror it into the widget's session_state key (no `value=`) so a
-    # programmatic flip and a user click never silently revert each other.
+    # Real-order gate. Enabling the bot is scan-only; orders require explicit
+    # confirmation plus this checkbox. The engine is the sole executor; agent08
+    # remains disarmed through bus["auto_execute"] to avoid duplicate orders.
     try:
         ss.setdefault("auto_exec_checkbox", snap.auto_execute)
-        new_auto = st.sidebar.checkbox(
-            "Autonomous trading (auto-execute)",
-            key="auto_exec_checkbox",
-            help="ON (default once the bot is enabled): the engine places top candidates "
-                 "automatically during the active phase — no manual step. Untick only to "
-                 "pause auto-orders and place manually from Signals.",
+        ss.setdefault("auto_exec_confirm", False)
+        live = bool(getattr(settings, "ENABLE_LIVE_TRADING", False))
+        st.sidebar.checkbox(
+            "I understand Auto-execute can place intraday orders",
+            key="auto_exec_confirm",
+            disabled=not snap.enabled,
+            help="Required before Auto-execute can be turned on.",
         )
+        new_auto = st.sidebar.checkbox(
+            "Auto-execute orders",
+            key="auto_exec_checkbox",
+            disabled=not snap.enabled,
+            help="When ON, the engine places approved candidates automatically during "
+                 "10:15–14:45 IST. Keep OFF for monitoring/manual placement.",
+        )
+        if new_auto and not ss.get("auto_exec_confirm"):
+            st.sidebar.error("Confirm the Auto-execute risk acknowledgement first.")
+            new_auto = False
         if new_auto != snap.auto_execute:
             get_engine().set_auto_execute(new_auto)
-        live = bool(getattr(settings, "ENABLE_LIVE_TRADING", False))
         if new_auto and live:
-            st.sidebar.warning("⚠️ Autonomous trading ON · **LIVE** — engine places **REAL** orders automatically.")
+            st.sidebar.warning("⚠️ Auto-execute ON · **LIVE** — REAL Zerodha MIS orders may be placed.")
         elif new_auto:
             st.sidebar.info(
-                "Autonomous trading ON · **DRY-RUN** — orders are simulated, **no real money**. "
+                "Auto-execute ON · **DRY-RUN** — orders are simulated, **no real money**. "
                 "Set `ENABLE_LIVE_TRADING=true` in Secrets to trade for real."
             )
         else:
-            st.sidebar.caption("Paused — engine scans only; you place manually from Signals.")
+            st.sidebar.caption("Monitoring only — engine scans; no automatic broker orders.")
     except Exception as e:
         log.exception("Auto-execute toggle failed")
         st.sidebar.error(f"Auto-exec toggle failed: {e}")
@@ -573,11 +576,132 @@ def minutes_to_square_off() -> int | None:
     if not is_nse_bse_trading_day(now.date()):
         return None
     from datetime import datetime as _dt, time as _t
-    eod = _dt.combine(now.date(), _t(15, 0), tzinfo=IST)
+    eod = _dt.combine(now.date(), _t(15, 15), tzinfo=IST)
     delta = eod - now
     if delta.total_seconds() <= 0:
         return 0
     return int(delta.total_seconds() // 60)
+
+
+def _open_position_symbols() -> set[str]:
+    syms: set[str] = set()
+    try:
+        from app.core.bracket_manager import ENTRY_PENDING, IN_POSITION, get_bracket_manager
+
+        for b in get_bracket_manager().snapshot():
+            if b.get("state") in (ENTRY_PENDING, IN_POSITION):
+                syms.add(str(b.get("symbol") or ""))
+    except Exception:
+        pass
+    try:
+        portfolio = get_orch().bus.get("portfolio", max_age_s=120.0) or {}
+        for p in portfolio.get("positions") or []:
+            if int(p.get("qty") or 0) != 0:
+                syms.add(str(p.get("symbol") or ""))
+    except Exception:
+        pass
+    return {s for s in syms if s}
+
+
+def auto_mode_state(capital: float, snap) -> dict:
+    """Single source of truth for READY/BLOCKED and 'Why not trading?'."""
+    from app.core.trading_engine import PHASE_ACTIVE
+
+    re = get_engine().risk_engine
+    open_syms = _open_position_symbols()
+    loss_used = max(0.0, -re.daily_stats.total_pnl)
+    approved = {}
+    risk_alerts = []
+    try:
+        approved = get_orch().bus.get("approved_decision", max_age_s=45.0) or {}
+        risk_alerts = get_orch().bus.get("risk_alerts", max_age_s=45.0) or []
+    except Exception:
+        pass
+    candidates = snap.candidates or []
+    reasons: list[str] = []
+    market_ok, market_msg = can_place_nse_bse_equity_trade()
+    if not ss.authed:
+        reasons.append("Not logged into Kite")
+    if not settings.KITE_API_KEY or settings.KITE_API_KEY.strip() == "your_api_key_here":
+        reasons.append("Streamlit Secrets missing KITE_API_KEY")
+    if not settings.KITE_API_SECRET or settings.KITE_API_SECRET.strip() == "your_api_secret_here":
+        reasons.append("Streamlit Secrets missing KITE_API_SECRET")
+    if not settings.OPENAI_API_KEY and settings.LLM_PROVIDER.lower() == "openai":
+        reasons.append("Streamlit Secrets missing OPENAI_API_KEY")
+    if not bool(getattr(settings, "ENABLE_LIVE_TRADING", False)):
+        reasons.append("ENABLE_LIVE_TRADING is false (DRY-RUN only)")
+    if not market_ok:
+        reasons.append(f"Market gate closed: {market_msg}")
+    if not snap.enabled:
+        reasons.append("Bot disabled")
+    if not orch_running():
+        reasons.append("12-agent loop not running")
+    if not snap.auto_execute:
+        reasons.append("Auto-execute OFF")
+    if snap.phase != PHASE_ACTIVE:
+        reasons.append(f"Outside active phase: {snap.phase_label or snap.phase}")
+    if re.daily_stats.is_trading_halted:
+        reasons.append("Risk cap reached: trading halted")
+    if re.daily_stats.total_trades >= re.config.max_trades_per_day:
+        reasons.append(f"Max trades/day reached ({re.config.max_trades_per_day})")
+    if len(open_syms) >= re.config.max_open_positions:
+        reasons.append(f"Max open positions reached ({len(open_syms)}/{re.config.max_open_positions})")
+    if snap.enabled and snap.phase == PHASE_ACTIVE and not candidates and not approved:
+        reasons.append("No approved decision / no engine candidate yet")
+    if risk_alerts and not approved and candidates:
+        latest = risk_alerts[0]
+        reasons.append(f"Risk rejected latest setup: {latest.get('reason', 'unknown')}")
+    for ev in reversed(snap.activity[-5:]):
+        msg = str(ev.get("msg", ""))
+        if "order failed" in msg.lower() or "kite" in msg.lower() and "failed" in msg.lower():
+            reasons.append(f"Kite order failed: {msg}")
+            break
+    return {
+        "ready": not reasons,
+        "reason": reasons[0] if reasons else "Ready to trade automatically",
+        "reasons": reasons,
+        "logged_in": bool(ss.authed),
+        "bot_enabled": bool(snap.enabled),
+        "auto_execute": bool(snap.auto_execute),
+        "phase": snap.phase_label or snap.phase,
+        "open_count": len(open_syms),
+        "max_open": re.config.max_open_positions,
+        "loss_used": loss_used,
+        "loss_cap": re.config.max_loss_per_day,
+        "trades_used": re.daily_stats.total_trades,
+        "trades_cap": re.config.max_trades_per_day,
+        "live": bool(getattr(settings, "ENABLE_LIVE_TRADING", False)),
+        "capital": capital,
+    }
+
+
+def auto_mode_status_strip(capital: float, snap) -> None:
+    state = auto_mode_state(capital, snap)
+    if state["ready"]:
+        st.success("AUTO MODE: READY TO TRADE")
+    else:
+        st.warning(f"AUTO MODE: BLOCKED — {state['reason']}")
+    c = st.columns(7)
+    c[0].metric("Logged in", "Yes" if state["logged_in"] else "No")
+    c[1].metric("Bot enabled", "Yes" if state["bot_enabled"] else "No")
+    c[2].metric("Auto-execute", "Yes" if state["auto_execute"] else "No")
+    c[3].metric("Phase", state["phase"])
+    c[4].metric("Open positions", f"{state['open_count']}/{state['max_open']}")
+    c[5].metric("Daily loss", f"₹{state['loss_used']:.0f}/₹{state['loss_cap']:.0f}")
+    c[6].metric("Trades", f"{state['trades_used']}/{state['trades_cap']}")
+
+
+def why_not_trading_panel(capital: float, snap) -> None:
+    state = auto_mode_state(capital, snap)
+    st.subheader("Why not trading?")
+    if state["ready"]:
+        st.success(
+            "All gates are open. The next approved setup during the active phase can be placed automatically."
+        )
+        return
+    st.caption("First blocking reason is shown in the Auto Mode strip. Full checklist:")
+    for reason in state["reasons"]:
+        st.markdown(f"- {reason}")
 
 
 def top_status_strip(capital: float, snap) -> None:
@@ -621,14 +745,14 @@ def top_status_strip(capital: float, snap) -> None:
     c[4].metric("Risk used", f"{pct * 100:.0f}%")
     c[4].progress(pct, text=" ")
 
-    # Square-off countdown
+    # Bot-side force exit countdown
     mins = minutes_to_square_off()
     if mins is None:
-        c[5].metric("Square-off", "—")
+        c[5].metric("Force exit", "—")
     elif mins == 0:
-        c[5].metric("Square-off", "NOW")
+        c[5].metric("Force exit", "NOW")
     else:
-        c[5].metric("Square-off in", f"{mins} min")
+        c[5].metric("Force exit in", f"{mins} min")
 
     # KILL ALL
     if c[6].button(
@@ -927,8 +1051,10 @@ def guardrails_panel() -> None:
 - `< 9:15` Pre-market — idle
 - `9:15–9:30` Setup — auto-armed, no trades
 - `9:30–10:15` Noisy open — observation only
-- `10:15–14:45` Active — scans every 5s; auto-executes if toggle is ON
-- `14:45–15:30` Closing — no new entries; broker MIS squares off
+- `10:15–14:45` Active — scans every 5s; auto-executes only if confirmed ON
+- `14:45–15:15` Closing — no new entries; target/stop exits continue
+- `15:15` Force square-off — bot cancels tracked exits and sends final MIS sell
+- `15:30` Broker MIS square-off remains the last backstop
 
 **Hard rules (every order)**
 - SL distance **< 10%** (engine caps at {max_sl:g}%)
@@ -952,17 +1078,20 @@ def dashboard() -> None:
     _, _, _, session_capital, _ = _intraday_rules()
     cap = session_capital()
     safe("top_strip", top_status_strip, cap, snap)
+    safe("auto_mode", auto_mode_status_strip, cap, snap)
     st.divider()
     safe("strategy_cards", strategy_cards, snap)
     st.divider()
     left, right = st.columns([3, 2])
     with left:
-        tabs = st.tabs(["Signals", "Order book", "Guardrails"])
+        tabs = st.tabs(["Signals", "Why not trading?", "Order book", "Guardrails"])
         with tabs[0]:
             safe("signals", signals_panel, cap, snap)
         with tabs[1]:
-            safe("order_book", order_book_panel)
+            safe("why_not_trading", why_not_trading_panel, cap, snap)
         with tabs[2]:
+            safe("order_book", order_book_panel)
+        with tabs[3]:
             safe("guardrails", guardrails_panel)
     with right:
         safe("positions", positions_panel)
