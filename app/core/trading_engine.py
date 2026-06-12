@@ -92,6 +92,7 @@ class TradingEngine:
         self.risk_engine = RiskEngine()
         self._thread: Optional[threading.Thread] = None
         self._force_square_off_date: str | None = None
+        self._scan_offset = 0
         # Thread is started lazily on the first .enable() call so module import is cheap.
 
     # ── Public controls ─────────────────────────────────────────────────────
@@ -253,13 +254,27 @@ class TradingEngine:
 
         # Outside the lock: PHASE_ACTIVE work (scan + optional execute)
         try:
-            from app.core.intraday_agent import scan_intraday_universe, session_capital
-            capital = session_capital()
-            cands = scan_intraday_universe(capital, max_symbols=40)
+            from app.core import intraday_agent
+            capital = intraday_agent.session_capital()
+            cands = intraday_agent.scan_intraday_universe(capital, max_symbols=40, offset=self._scan_offset)
+            self._scan_offset = (self._scan_offset + 40) % 500
             with self._lock:
                 self._candidates = cands
                 self._last_scan_at = datetime.now(IST).strftime("%H:%M:%S")
-            self._log(f"Scan: {len(cands)} candidates")
+            if cands:
+                self._log(f"Scan: {len(cands)} candidates")
+            else:
+                diag = intraday_agent.LAST_SCAN_DIAGNOSTICS or {}
+                reasons = diag.get("reasons") or {}
+                behavior = diag.get("behavior") or {}
+                top = sorted(reasons.items(), key=lambda kv: kv[1], reverse=True)[:4]
+                detail = ", ".join(f"{k}={v}" for k, v in top) or "no diagnostics"
+                label = behavior.get("label")
+                summary = behavior.get("summary")
+                if label:
+                    self._log(f"Scan: 0 candidates · {label} ({detail}) — {summary}", "warn")
+                else:
+                    self._log(f"Scan: 0 candidates ({detail})", "warn")
 
             if self._auto_execute and not self.risk_engine.daily_stats.is_trading_halted:
                 self._auto_place_top_candidates(cands, capital)

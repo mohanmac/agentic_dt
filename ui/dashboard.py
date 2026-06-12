@@ -911,12 +911,54 @@ def signals_panel(capital: float, snap) -> None:
         f"SL cap <10% · Target floor ≥{min_tgt:g}% · "
         + (f"Last scan **{snap.last_scan_at}** IST" if snap.last_scan_at else "No scan yet")
     )
+    try:
+        from app.core.intraday_agent import LAST_SCAN_DIAGNOSTICS
+
+        behavior = (LAST_SCAN_DIAGNOSTICS or {}).get("behavior") or {}
+        if behavior:
+            label = behavior.get("label", "UNKNOWN")
+            if label == "RISK_OFF":
+                st.error(f"Market behavior: **{label}** — {behavior.get('summary', '')}")
+            elif label == "RISK_ON":
+                st.success(f"Market behavior: **{label}** — {behavior.get('summary', '')}")
+            elif label == "ILLIQUID_CHOP":
+                st.warning(f"Market behavior: **{label}** — {behavior.get('summary', '')}")
+            else:
+                st.info(f"Market behavior: **{label}** — {behavior.get('summary', '')}")
+            m = st.columns(5)
+            m[0].metric("Advancers", f"{behavior.get('advancers_pct', 0)}%")
+            m[1].metric("Above VWAP", f"{behavior.get('above_vwap_pct', 0)}%")
+            m[2].metric("Avg day ret", f"{behavior.get('avg_day_ret_pct', 0)}%")
+            m[3].metric("Liquid names", f"{behavior.get('liquid_pct', 0)}%")
+            m[4].metric("Avg spread", f"{behavior.get('avg_spread_pct', 0)}%")
+            with st.expander("Top movers in last scanned slice", expanded=False):
+                c1, c2 = st.columns(2)
+                c1.markdown("**Top gainers**")
+                c1.dataframe(behavior.get("top_gainers") or [], hide_index=True, use_container_width=True)
+                c2.markdown("**Top losers**")
+                c2.dataframe(behavior.get("top_losers") or [], hide_index=True, use_container_width=True)
+    except Exception:
+        pass
     candidates = snap.candidates or []
     if not candidates:
         if not snap.enabled:
             st.info("Bot is disabled. Press **Enable bot** in the sidebar to start the auto loop.")
         elif snap.phase == PHASE_ACTIVE:
             st.info("Active phase — no candidates passed the last scan. Engine will retry on the next tick.")
+            try:
+                from app.core.intraday_agent import LAST_SCAN_DIAGNOSTICS
+
+                diag = LAST_SCAN_DIAGNOSTICS or {}
+                reasons = diag.get("reasons") or {}
+                if reasons:
+                    st.caption("Last scan rejection reasons")
+                    rows = [
+                        {"Reason": reason, "Count": count}
+                        for reason, count in sorted(reasons.items(), key=lambda kv: kv[1], reverse=True)
+                    ]
+                    st.dataframe(rows, hide_index=True, use_container_width=True)
+            except Exception:
+                pass
         else:
             st.info(f"Phase: {snap.phase_label}. Engine scans candidates only during the active phase (10:15–14:45 IST).")
         return

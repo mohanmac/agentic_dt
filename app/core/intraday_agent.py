@@ -20,12 +20,12 @@ from app.core.zerodha_auth import zerodha_auth
 
 IST = ZoneInfo("Asia/Kolkata")
 
-MIN_PRICE = 50.0
-MAX_PRICE = 300.0
-MIN_DAILY_VOLUME = 500_000
-MAX_SPREAD_PCT = 0.2
-MIN_DEPTH_EACH_SIDE = 2_000
-MIN_CONFIDENCE_TRADE = 75
+MIN_PRICE = 40.0
+MAX_PRICE = 600.0
+MIN_DAILY_VOLUME = 100_000
+MAX_SPREAD_PCT = 0.5
+MIN_DEPTH_EACH_SIDE = 250
+MIN_CONFIDENCE_TRADE = 68
 MAX_TRADES_PER_DAY = 5
 RAMP_EXIT_HOUR = 15
 RAMP_EXIT_MINUTE = 15
@@ -34,9 +34,16 @@ RAMP_EXIT_MINUTE = 15
 MIN_TARGET_PCT = 10.0
 MAX_STOP_LOSS_PCT = 9.5
 
-ORB_VOL_MULT = 1.5
-MOM_VOL_MULT = 2.0
-VWAP_PULLBACK_VOL_MULT = 1.3
+ORB_VOL_MULT = 1.15
+MOM_VOL_MULT = 1.25
+VWAP_PULLBACK_VOL_MULT = 1.0
+
+LAST_SCAN_DIAGNOSTICS: Dict[str, Any] = {
+    "scanned": 0,
+    "accepted": 0,
+    "reasons": {},
+    "batch": [],
+}
 
 
 @dataclass
@@ -216,6 +223,91 @@ def _score_confidence(base: int, checks: List[Tuple[bool, str]]) -> Tuple[int, L
             score += 8
         notes.append(f"{'✓' if ok else '✗'} {msg}")
     return min(100, score), notes
+
+
+def _reject(diag: Optional[dict], reason: str) -> None:
+    if diag is None:
+        return
+    reasons = diag.setdefault("reasons", {})
+    reasons[reason] = int(reasons.get(reason, 0)) + 1
+
+
+def _batch_market_behavior(batch: List[str], quotes: Dict[str, dict]) -> Dict[str, Any]:
+    """Summarise how the scanned NIFTY 500 slice is behaving right now.
+
+    This is intentionally descriptive, not predictive. In geopolitical shock
+    sessions (war headlines, oil spikes, risk-off flows), a realistic scanner
+    must first answer: is the market broad-based risk-off, selective, or healthy
+    enough to permit intraday longs?
+    """
+    rows: list[dict[str, Any]] = []
+    for sym in batch:
+        q = quotes.get(sym) or {}
+        ltp = float(q.get("ltp") or 0.0)
+        ohlc = q.get("ohlc") or {}
+        open_px = float(ohlc.get("open") or 0.0)
+        vwap = float(q.get("vwap") or 0.0)
+        if ltp <= 0 or open_px <= 0:
+            continue
+        spread_pct, bid_q, ask_q = market_data.quote_spread_and_depth(q)
+        day_ret = (ltp / open_px - 1.0) * 100.0
+        rows.append(
+            {
+                "symbol": sym,
+                "ltp": round(ltp, 2),
+                "day_ret": round(day_ret, 2),
+                "above_vwap": bool(vwap and ltp >= vwap),
+                "spread_pct": round(spread_pct, 3),
+                "depth": int(min(bid_q, ask_q)),
+            }
+        )
+    if not rows:
+        return {
+            "label": "NO_DATA",
+            "summary": "No quote data available for scanned slice.",
+            "scanned_with_quotes": 0,
+        }
+
+    n = len(rows)
+    adv = sum(1 for r in rows if r["day_ret"] > 0)
+    dec = sum(1 for r in rows if r["day_ret"] < 0)
+    above_vwap = sum(1 for r in rows if r["above_vwap"])
+    avg_ret = sum(float(r["day_ret"]) for r in rows) / n
+    avg_spread = sum(float(r["spread_pct"]) for r in rows) / n
+    liquid = sum(1 for r in rows if float(r["spread_pct"]) <= MAX_SPREAD_PCT and int(r["depth"]) >= MIN_DEPTH_EACH_SIDE)
+    adv_pct = adv / n * 100.0
+    above_vwap_pct = above_vwap / n * 100.0
+    liquid_pct = liquid / n * 100.0
+
+    if adv_pct < 35 and avg_ret < -0.35 and above_vwap_pct < 40:
+        label = "RISK_OFF"
+        summary = "Broad selling / war-risk tape: avoid forcing longs; take only exceptional relative-strength setups."
+    elif adv_pct > 60 and avg_ret > 0.25 and above_vwap_pct > 55:
+        label = "RISK_ON"
+        summary = "Broad participation is positive: intraday longs can be considered if risk checks pass."
+    elif liquid_pct < 60 or avg_spread > MAX_SPREAD_PCT:
+        label = "ILLIQUID_CHOP"
+        summary = "Liquidity/spreads are poor: avoid marketable orders and keep auto-trading conservative."
+    else:
+        label = "SELECTIVE"
+        summary = "Mixed market: scan for relative-strength pockets; do not expect many candidates."
+
+    top_gainers = sorted(rows, key=lambda r: float(r["day_ret"]), reverse=True)[:5]
+    top_losers = sorted(rows, key=lambda r: float(r["day_ret"]))[:5]
+    return {
+        "label": label,
+        "summary": summary,
+        "scanned_with_quotes": n,
+        "advancers": adv,
+        "decliners": dec,
+        "advancers_pct": round(adv_pct, 1),
+        "above_vwap_pct": round(above_vwap_pct, 1),
+        "avg_day_ret_pct": round(avg_ret, 2),
+        "avg_spread_pct": round(avg_spread, 3),
+        "liquid_pct": round(liquid_pct, 1),
+        "top_gainers": top_gainers,
+        "top_losers": top_losers,
+    }
 
 
 def apply_profit_stop_profile(d: IntradayDecision) -> Optional[IntradayDecision]:
@@ -413,32 +505,44 @@ def _position_size(entry: float, stop: float, capital: float) -> int:
     return max(0, qty)
 
 
-def evaluate_symbol(symbol: str, capital: float) -> Optional[IntradayDecision]:
+def evaluate_symbol(
+    symbol: str,
+    capital: float,
+    diag: Optional[dict] = None,
+    quote: Optional[dict] = None,
+) -> Optional[IntradayDecision]:
     """Run full gate + strategy stack for one symbol."""
-    quotes = market_data.get_quote_full([symbol])
-    quote = quotes.get(symbol)
+    if quote is None:
+        quotes = market_data.get_quote_full([symbol])
+        quote = quotes.get(symbol)
     if not quote:
+        _reject(diag, "no_quote")
         return None
 
     ltp = float(quote["ltp"])
     if not (MIN_PRICE <= ltp <= MAX_PRICE):
+        _reject(diag, "price_out_of_range")
         return None
 
     spread_pct, bid_q, ask_q = market_data.quote_spread_and_depth(quote)
     liq_ok, liq_msg = _liquidity_ok(spread_pct, bid_q, ask_q)
     if not liq_ok:
         logger.debug(f"{symbol} liquidity: {liq_msg}")
+        _reject(diag, "liquidity")
         return None
 
     dv_ok, dv = _daily_volume_ok(symbol)
     if not dv_ok:
+        _reject(diag, "daily_volume")
         return None
 
     ctx = _build_5m_context(symbol, quote)
     if not ctx:
+        _reject(diag, "short_5m_history")
         return None
 
     if ctx["adx_proxy"] < 0.12 and ctx["vol_ratio"] < 1.1:
+        _reject(diag, "flat_no_volume")
         return None
 
     nifty_bullish, nifty_note = _nifty_trend_bullish()
@@ -455,39 +559,66 @@ def evaluate_symbol(symbol: str, capital: float) -> Optional[IntradayDecision]:
         candidates.append(mom)
 
     if not candidates:
+        _reject(diag, "no_strategy_signal")
         return None
 
     best = max(candidates, key=lambda d: d.confidence)
     best = apply_profit_stop_profile(best)
     if best is None:
+        _reject(diag, "profit_stop_profile")
         return None
     best.quantity = _position_size(best.entry_price, best.stop_loss, capital)
     best.market_alignment = [nifty_note, liq_msg, f"Daily vol {dv:,}"] + best.market_alignment
     enrich_par_metadata(best, capital)
     if best.quantity < 1:
+        _reject(diag, "quantity_zero")
         return None
+    _reject(diag, "accepted")
     return best
 
 
-def scan_intraday_universe(capital: float, max_symbols: int = 35) -> List[IntradayDecision]:
-    """Scan a subset of the NIFTY 500 list (deterministic slice per day for speed)."""
+def scan_intraday_universe(
+    capital: float,
+    max_symbols: int = 35,
+    offset: int | None = None,
+) -> List[IntradayDecision]:
+    """Scan a rotating subset of NIFTY 500.
+
+    Earlier this used one deterministic slice for the whole day. If that slice
+    had no tradable names, the engine logged `Scan: 0 candidates` all session.
+    The optional offset lets the engine rotate through the universe while keeping
+    each tick small enough for Kite rate limits.
+    """
     universe = load_nifty500_symbols()
     day_seed = datetime.now(IST).strftime("%Y%m%d")
-    # stable rotation
-    start = int(day_seed) % max(1, len(universe) - max_symbols)
+    base = int(day_seed) % max(1, len(universe))
+    start = (base + int(offset or 0)) % max(1, len(universe))
     batch = universe[start : start + max_symbols]
     if len(batch) < max_symbols:
         batch = batch + universe[: max_symbols - len(batch)]
 
+    batch_quotes = market_data.get_quote_full(batch)
+    behavior = _batch_market_behavior(batch, batch_quotes)
+    diag: dict[str, Any] = {
+        "scanned": len(batch),
+        "accepted": 0,
+        "reasons": {},
+        "batch": batch,
+        "behavior": behavior,
+    }
     out: List[IntradayDecision] = []
     for sym in batch:
         try:
-            d = evaluate_symbol(sym, capital)
+            d = evaluate_symbol(sym, capital, diag, batch_quotes.get(sym))
             if d:
                 out.append(d)
         except Exception as e:
             logger.debug(f"scan skip {sym}: {e}")
+            _reject(diag, "exception")
     out.sort(key=lambda x: x.confidence, reverse=True)
+    diag["accepted"] = len(out)
+    global LAST_SCAN_DIAGNOSTICS
+    LAST_SCAN_DIAGNOSTICS = diag
     return out
 
 
