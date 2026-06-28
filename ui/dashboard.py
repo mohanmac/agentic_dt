@@ -19,6 +19,7 @@ from __future__ import annotations
 import sys
 import logging
 import traceback
+from html import escape
 from datetime import datetime
 from pathlib import Path
 
@@ -246,6 +247,113 @@ PULSE_CSS = """
 }
 .flow-parallel { background: rgba(59,130,246,0.22); color: #93c5fd; }
 .flow-sequence { background: rgba(16,185,129,0.20); color: #6ee7b7; }
+.agent-flow-stage {
+  margin: 14px 0 22px 0;
+  padding: 16px;
+  border: 1px solid rgba(148,163,184,0.22);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(59,130,246,0.12), transparent 30%),
+    rgba(15,23,42,0.025);
+}
+.agent-flow-title {
+  display:flex; align-items:center; justify-content:space-between;
+  gap: 12px; margin-bottom: 12px;
+}
+.agent-flow-title h3 { margin:0; font-size: 1.05rem; }
+.agent-flow-legend { color:#64748b; font-size:0.78rem; }
+.agent-flow-grid {
+  display:grid;
+  grid-template-columns: minmax(92px, 0.8fr) 1.2fr 1.45fr 1.2fr minmax(110px, 0.9fr);
+  gap: 12px;
+  align-items: stretch;
+}
+.flow-group {
+  border:1px solid rgba(148,163,184,0.20);
+  border-radius:16px;
+  padding:10px;
+  min-height:132px;
+  background:rgba(255,255,255,0.55);
+  position:relative;
+}
+.flow-group-label {
+  font-size:0.70rem;
+  letter-spacing:0.06em;
+  text-transform:uppercase;
+  color:#64748b;
+  margin-bottom:8px;
+  font-weight:700;
+}
+.flow-card {
+  border-radius:14px;
+  padding:9px 10px;
+  margin:7px 0;
+  border:1px solid rgba(148,163,184,0.25);
+  background:#fff;
+  box-shadow:0 1px 6px rgba(15,23,42,0.06);
+}
+.flow-card.active {
+  border-color:rgba(22,163,74,0.55);
+  box-shadow:0 0 0 2px rgba(34,197,94,0.10), 0 0 18px rgba(34,197,94,0.18);
+  animation: activeCardGlow 1.25s ease-in-out infinite;
+}
+.flow-card.dormant { border-color:rgba(245,158,11,0.42); }
+.flow-card.finished { border-color:rgba(220,38,38,0.42); }
+.flow-card-name {
+  font-weight:700;
+  font-size:0.82rem;
+  color:#0f172a;
+}
+.flow-card-task {
+  margin-top:3px;
+  font-size:0.70rem;
+  color:#64748b;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.flow-status {
+  float:right;
+  font-size:0.62rem;
+  font-weight:800;
+  border-radius:999px;
+  padding:1px 6px;
+}
+.flow-status.active { color:#15803d; background:rgba(34,197,94,0.13); }
+.flow-status.dormant { color:#b45309; background:rgba(245,158,11,0.16); }
+.flow-status.finished { color:#b91c1c; background:rgba(220,38,38,0.12); }
+.flow-arrow {
+  position:absolute;
+  right:-18px;
+  top:50%;
+  width:24px;
+  height:2px;
+  background:linear-gradient(90deg, rgba(59,130,246,0.25), rgba(59,130,246,0.9));
+  animation: arrowPulse 1.2s linear infinite;
+  z-index:2;
+}
+.flow-arrow:after {
+  content:"";
+  position:absolute;
+  right:-1px;
+  top:-4px;
+  border-left:8px solid rgba(59,130,246,0.9);
+  border-top:5px solid transparent;
+  border-bottom:5px solid transparent;
+}
+@keyframes activeCardGlow {
+  0%,100% { transform:translateY(0); }
+  50% { transform:translateY(-2px); }
+}
+@keyframes arrowPulse {
+  0% { opacity:0.25; transform:translateX(-5px); }
+  50% { opacity:1; }
+  100% { opacity:0.25; transform:translateX(5px); }
+}
+@media (max-width: 900px) {
+  .agent-flow-grid { grid-template-columns:1fr; }
+  .flow-arrow { display:none; }
+}
 </style>
 """
 
@@ -312,8 +420,6 @@ def sidebar() -> None:
         sidebar_funds()
         st.sidebar.divider()
         sidebar_engine_controls()
-        st.sidebar.divider()
-        sidebar_agents()
         st.sidebar.divider()
         sidebar_strategies()
         return
@@ -565,6 +671,91 @@ def _agent_flow_badge(name: str) -> str:
     klass = "flow-sequence" if mode == "sequence" else "flow-parallel"
     mode_text = "SEQ" if mode == "sequence" else "PAR"
     return f"<span class='flow-chip {klass}'>{mode_text} · {label}</span>"
+
+
+AGENT_LABELS = {
+    "agent01_data": "Market Data",
+    "agent02_feature": "Feature Builder",
+    "agent03_trend": "Trend Agent",
+    "agent04_breakout": "Breakout Agent",
+    "agent05_pullback": "Pullback Agent",
+    "agent06_decision": "Synthesizer",
+    "agent07_risk": "Risk Check",
+    "agent08_execution": "Execution",
+    "agent09_sentiment": "Sentiment",
+}
+
+MAIN_AGENT_FLOW_GROUPS = [
+    ("INPUT", ["agent01_data"]),
+    ("PARALLEL ANALYSIS", ["agent02_feature", "agent03_trend", "agent04_breakout", "agent05_pullback", "agent09_sentiment"]),
+    ("SYNTHESIZE", ["agent06_decision"]),
+    ("VALIDATE + ACT", ["agent07_risk", "agent08_execution"]),
+    ("OUTPUT", []),
+]
+
+
+def _agent_flow_card(name: str) -> str:
+    last = get_orch().bus.get(f"last_result:{name}")
+    state, state_text = _agent_state(name, last)
+    label = escape(AGENT_LABELS.get(name, name))
+    action = escape(_agent_action_text(last))
+    return (
+        f"<div class='flow-card {state}'>"
+        f"<span class='flow-status {state}'>{state_text}</span>"
+        f"<div class='flow-card-name'>{label}</div>"
+        f"<div class='flow-card-task'>{action}</div>"
+        f"</div>"
+    )
+
+
+def main_agent_flow_panel() -> None:
+    """Main-screen animated router-pattern view for the 9-agent system."""
+    st.markdown(PULSE_CSS, unsafe_allow_html=True)
+    health = get_orch().bus.get("health") or {}
+    ok = sum(1 for v in health.values() if v.get("status") == "OK")
+    loop_state = "running" if orch_running() else "idle"
+    auto_state = "auto-execute ON" if bool(get_orch().bus.get("auto_execute") or False) else "auto-execute OFF"
+
+    groups_html = []
+    for idx, (title, names) in enumerate(MAIN_AGENT_FLOW_GROUPS):
+        arrow = "<div class='flow-arrow'></div>" if idx < len(MAIN_AGENT_FLOW_GROUPS) - 1 else ""
+        if names:
+            cards = "".join(_agent_flow_card(name) for name in names)
+        else:
+            placed = get_orch().bus.get("executed_today") or set()
+            approved = get_orch().bus.get("approved_decision", max_age_s=60.0) or {}
+            if placed:
+                state, status, task = "finished", "FINISHED", f"orders sent: {len(placed)}"
+            elif approved:
+                state, status, task = "active", "ACTIVE", f"approved setups: {len(approved)}"
+            elif orch_running():
+                state, status, task = "dormant", "DORMANT", "waiting for approved trade"
+            else:
+                state, status, task = "dormant", "DORMANT", "enable bot to start"
+            cards = (
+                f"<div class='flow-card {state}'>"
+                f"<span class='flow-status {state}'>{status}</span>"
+                f"<div class='flow-card-name'>Trade Output</div>"
+                f"<div class='flow-card-task'>{escape(task)}</div>"
+                f"</div>"
+            )
+        groups_html.append(
+            f"<div class='flow-group'>"
+            f"<div class='flow-group-label'>{escape(title)}</div>"
+            f"{cards}{arrow}</div>"
+        )
+
+    html = (
+        "<div class='agent-flow-stage'>"
+        "<div class='agent-flow-title'>"
+        "<h3>9-Agent Router Pattern</h3>"
+        f"<div class='agent-flow-legend'>{ok}/{len(AGENT_NAMES)} healthy · {loop_state} · {auto_state} · green=active amber=dormant red=finished</div>"
+        "</div>"
+        "<div class='agent-flow-grid'>"
+        + "".join(groups_html)
+        + "</div></div>"
+    )
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def _agents_fragment() -> None:
@@ -1185,6 +1376,8 @@ def dashboard() -> None:
     cap = session_capital()
     safe("top_strip", top_status_strip, cap, snap)
     safe("auto_mode", auto_mode_status_strip, cap, snap)
+    st.divider()
+    safe("agent_flow", main_agent_flow_panel)
     st.divider()
     safe("strategy_cards", strategy_cards, snap)
     st.divider()
