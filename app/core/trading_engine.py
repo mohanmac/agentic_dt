@@ -81,26 +81,31 @@ class TradingEngine:
     def _init(self) -> None:
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
-        self._enabled = False
-        self._auto_execute = False
+        restored = self._load_persisted_control_state()
+        self._enabled = bool(restored.get("enabled", False))
+        self._auto_execute = bool(restored.get("auto_execute", False))
         self._armed = False
         self._phase = PHASE_CLOSED
         self._last_tick = ""
         self._last_scan_at = ""
         self._candidates: List[Any] = []
-        self._activity: deque = deque(maxlen=200)
+        self._activity: deque = deque(self._load_persisted_activity(), maxlen=200)
         self._trades_today = 0
         self.risk_engine = RiskEngine()
         self._thread: Optional[threading.Thread] = None
         self._force_square_off_date: str | None = None
         self._scan_offset = 0
-        # Thread is started lazily on the first .enable() call so module import is cheap.
+        # Thread is started lazily on the first .enable() call, or restored if the
+        # previous Cloud process had an enabled bot for the current trading day.
+        if self._enabled:
+            self._start_thread()
 
     # ── Public controls ─────────────────────────────────────────────────────
     def enable(self) -> None:
         with self._lock:
             self._enabled = True
             self._auto_execute = True
+            self._persist_control_state_locked()
         self._start_thread()
         self._log("Bot ENABLED — auto-execute ON; will place orders during the active phase")
 
@@ -108,11 +113,14 @@ class TradingEngine:
         with self._lock:
             self._enabled = False
             self._armed = False
+            self._auto_execute = False
+            self._persist_control_state_locked()
         self._log("Bot DISABLED — armed = False", "warn")
 
     def set_auto_execute(self, value: bool) -> None:
         with self._lock:
             self._auto_execute = bool(value)
+            self._persist_control_state_locked()
         self._log(f"Auto-execute = {'ON' if value else 'OFF'}", "warn" if value else "info")
 
     def kill_all(self) -> dict:
@@ -120,6 +128,8 @@ class TradingEngine:
         with self._lock:
             self._enabled = False
             self._armed = False
+            self._auto_execute = False
+            self._persist_control_state_locked()
         cancelled = 0
         failures: List[str] = []
         try:
@@ -160,6 +170,48 @@ class TradingEngine:
         ts = datetime.now(IST).strftime("%H:%M:%S")
         self._activity.append({"ts": ts, "level": level, "msg": msg})
         getattr(log, level, log.info)(msg)
+        self._persist_activity()
+
+    def _load_persisted_control_state(self) -> dict:
+        try:
+            from app.core.storage import storage
+
+            return storage.get_runtime_state("engine:control", {}) or {}
+        except Exception:
+            return {}
+
+    def _load_persisted_activity(self) -> list[dict]:
+        try:
+            from app.core.storage import storage
+
+            rows = storage.get_runtime_state("engine:activity", []) or []
+            return rows if isinstance(rows, list) else []
+        except Exception:
+            return []
+
+    def _persist_control_state_locked(self) -> None:
+        try:
+            from app.core.storage import storage
+
+            storage.set_runtime_state(
+                "engine:control",
+                {
+                    "enabled": bool(self._enabled),
+                    "auto_execute": bool(self._auto_execute),
+                    "armed": bool(self._armed),
+                    "updated_at": datetime.now(IST).isoformat(),
+                },
+            )
+        except Exception:
+            return
+
+    def _persist_activity(self) -> None:
+        try:
+            from app.core.storage import storage
+
+            storage.set_runtime_state("engine:activity", list(self._activity)[-50:])
+        except Exception:
+            return
 
     def _compute_phase(self) -> str:
         now = datetime.now(IST)

@@ -187,6 +187,19 @@ class Storage:
                     status TEXT DEFAULT 'active'
                 )
             """)
+
+            # Generic runtime state table. Used for cross-device monitoring and
+            # process-restart hydration of bot/agent state that is otherwise held
+            # in Streamlit memory.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS runtime_state (
+                    state_key TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    value_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (state_key, date)
+                )
+            """)
             
             # Create indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_symbol_time ON market_snapshots(symbol, timestamp)")
@@ -739,6 +752,56 @@ class Storage:
         except Exception as e:
             logger.debug(f"Could not check session: {e}")
             return False
+
+    # Runtime State
+    def set_runtime_state(self, key: str, value: Any, date: Optional[str] = None) -> None:
+        """Persist a JSON-serializable runtime value for the trading day."""
+        date = date or get_today_date_str()
+        payload = json.dumps(value, default=str)
+        now = datetime.now().isoformat()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO runtime_state (state_key, date, value_json, updated_at)
+                VALUES (?, ?, ?, ?)
+            """, (key, date, payload, now))
+
+    def get_runtime_state(self, key: str, default: Any = None, date: Optional[str] = None) -> Any:
+        """Load one persisted runtime value for the trading day."""
+        date = date or get_today_date_str()
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT value_json FROM runtime_state WHERE state_key = ? AND date = ?",
+                    (key, date),
+                )
+                row = cursor.fetchone()
+            if not row:
+                return default
+            return json.loads(row["value_json"])
+        except Exception as e:
+            logger.debug(f"Could not load runtime state {key}: {e}")
+            return default
+
+    def list_runtime_state(self, date: Optional[str] = None) -> Dict[str, Any]:
+        """Load all persisted runtime values for the trading day."""
+        date = date or get_today_date_str()
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT state_key, value_json FROM runtime_state WHERE date = ?", (date,))
+                rows = cursor.fetchall()
+            out: Dict[str, Any] = {}
+            for row in rows:
+                try:
+                    out[row["state_key"]] = json.loads(row["value_json"])
+                except Exception:
+                    out[row["state_key"]] = row["value_json"]
+            return out
+        except Exception as e:
+            logger.debug(f"Could not list runtime state: {e}")
+            return {}
 
 
 # Global storage instance

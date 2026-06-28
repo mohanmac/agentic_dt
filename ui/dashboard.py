@@ -210,6 +210,24 @@ def orch_running() -> bool:
     )
 
 
+def attached_to_existing_session() -> bool:
+    """True when this browser is viewing a bot started by another session/device."""
+    try:
+        snap = get_engine().snapshot()
+        return bool(ss.authed and (snap.enabled or orch_running()) and not ss.get("agents_running"))
+    except Exception:
+        return False
+
+
+def shared_session_notice() -> None:
+    """Explain cross-device monitoring vs starting a new trading session."""
+    if attached_to_existing_session():
+        st.info(
+            "Attached to the existing trading session. This device is monitoring the same "
+            "bot, orders, and 9-agent state; do not start a second session."
+        )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Sidebar
 # ─────────────────────────────────────────────────────────────────────────────
@@ -532,6 +550,8 @@ def sidebar_engine_controls() -> None:
 
     try:
         if snap.enabled:
+            if not ss.get("agents_running"):
+                st.sidebar.info("Viewing existing bot session from this device.")
             if st.sidebar.button("⏸ Disable bot", use_container_width=True, key="disable_bot_btn"):
                 log.info("UI: Disable bot clicked")
                 get_engine().disable()
@@ -639,9 +659,16 @@ def _agent_action_text(last) -> str:
     """One-line 'what this agent just did', derived from its last AgentResult."""
     if last is None:
         return "waiting for first tick…"
-    if not getattr(last, "ok", True):
-        return f"⚠ {getattr(last, 'error', None) or 'tick failed'}"
-    p = getattr(last, "payload", None)
+    if isinstance(last, dict):
+        ok = bool(last.get("ok", True))
+        p = last.get("payload")
+        error = last.get("error")
+    else:
+        ok = bool(getattr(last, "ok", True))
+        p = getattr(last, "payload", None)
+        error = getattr(last, "error", None)
+    if not ok:
+        return f"⚠ {error or 'tick failed'}"
     if isinstance(p, dict) and p:
         return " · ".join(f"{k}={v}" for k, v in p.items())
     return "ok"
@@ -650,13 +677,24 @@ def _agent_action_text(last) -> str:
 def _agent_state(name: str, last) -> tuple[str, str]:
     if last is None:
         return "dormant", "DORMANT"
-    if not getattr(last, "ok", True):
+    if isinstance(last, dict):
+        ok = bool(last.get("ok", True))
+        ts_raw = last.get("ts")
+        payload = last.get("payload")
+        try:
+            ts = datetime.fromisoformat(str(ts_raw)) if ts_raw else datetime.now()
+        except Exception:
+            ts = datetime.now()
+    else:
+        ok = bool(getattr(last, "ok", True))
+        ts = getattr(last, "ts", datetime.now())
+        payload = getattr(last, "payload", None)
+    if not ok:
         return "dormant", "DORMANT"
-    age_s = (datetime.now() - last.ts).total_seconds()
+    age_s = (datetime.now() - ts).total_seconds()
     interval = AGENT_INTERVALS.get(name, 15.0)
     if age_s <= max(2.0, interval * 0.6):
         return "active", "ACTIVE"
-    payload = getattr(last, "payload", None)
     if isinstance(payload, dict):
         # Finished = completed useful work in last successful tick.
         for k in ("placed", "approved", "buys", "symbols", "scored"):
@@ -1374,6 +1412,7 @@ def dashboard() -> None:
     snap = get_engine().snapshot()
     _, _, _, session_capital, _ = _intraday_rules()
     cap = session_capital()
+    safe("shared_session", shared_session_notice)
     safe("top_strip", top_status_strip, cap, snap)
     safe("auto_mode", auto_mode_status_strip, cap, snap)
     st.divider()
@@ -1429,10 +1468,9 @@ def auto_logoff_after_close() -> None:
     15:40 is the post-square-off boundary (REGULAR_END 15:30 → CLOSING_START 15:40),
     so MIS positions are already flat.
 
-    CRITICAL: only fires for a session that was actually RUNNING the bot when the
-    close arrived (ss.agents_running). A fresh login after hours — e.g. logging in
-    in the evening to review or test — must NEVER be auto-logged-off, otherwise it
-    invalidates the just-issued token and bounces the user straight back to login.
+    CRITICAL: only the browser session that armed the bot performs the shared
+    shutdown/logout. Other devices may attach as monitors; they must never log
+    out the shared Kite token or stop the process-wide agent loop.
     """
     if not ss.authed:
         return

@@ -181,6 +181,7 @@ class BracketManager:
             b.entry_id = self._place(symbol=symbol, txn=_BUY, qty=b.quantity,
                                      order_type=_LIMIT, price=b.entry_price)
             self._brackets[symbol] = b
+            self._persist_snapshot_locked()
             log.info("bracket opened %s qty=%s entry=%s sl=%s tgt=%s live=%s",
                      symbol, b.quantity, b.entry_price, b.stop_price, b.target_price, self.live)
             return b
@@ -197,6 +198,7 @@ class BracketManager:
                     self._advance(b, statuses)
                 except Exception:
                     log.exception("bracket advance failed %s", b.symbol)
+            self._persist_snapshot_locked()
 
     def _advance(self, b: Bracket, statuses: Dict[str, str]) -> None:
         if b.state == ENTRY_PENDING:
@@ -251,6 +253,7 @@ class BracketManager:
                     b.state = DONE
                     b.note = "force square-off simulated"
                     result["closed"] += 1
+                self._persist_snapshot_locked()
                 return result
 
             kite = self._kite()
@@ -286,11 +289,12 @@ class BracketManager:
                 except Exception as exc:
                     result["failures"].append(f"{b.symbol} square-off: {exc}")
                     log.exception("force square-off failed %s", b.symbol)
+            self._persist_snapshot_locked()
         return result
 
     def snapshot(self) -> List[dict]:
         with self._lock:
-            return [
+            rows = [
                 {
                     "symbol": b.symbol, "qty": b.quantity, "state": b.state,
                     "entry": b.entry_price, "stop": b.stop_price, "target": b.target_price,
@@ -298,10 +302,40 @@ class BracketManager:
                 }
                 for b in self._brackets.values()
             ]
+        if rows:
+            return rows
+        try:
+            from app.core.storage import storage
+
+            return storage.get_runtime_state("brackets:snapshot", []) or []
+        except Exception:
+            return []
 
     def active_count(self) -> int:
         with self._lock:
             return sum(1 for b in self._brackets.values() if b.state in (ENTRY_PENDING, IN_POSITION))
+
+    def _persist_snapshot_locked(self) -> None:
+        try:
+            from app.core.storage import storage
+
+            storage.set_runtime_state(
+                "brackets:snapshot",
+                [
+                    {
+                        "symbol": b.symbol,
+                        "qty": b.quantity,
+                        "state": b.state,
+                        "entry": b.entry_price,
+                        "stop": b.stop_price,
+                        "target": b.target_price,
+                        "note": b.note,
+                    }
+                    for b in self._brackets.values()
+                ],
+            )
+        except Exception:
+            return
 
 
 # ── process-wide singleton ────────────────────────────────────────────────────
