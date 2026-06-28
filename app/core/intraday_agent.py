@@ -33,6 +33,7 @@ RAMP_EXIT_MINUTE = 15
 # User mandate: target not below +10%, stop distance strictly under 10%
 MIN_TARGET_PCT = 10.0
 MAX_STOP_LOSS_PCT = 9.5
+QUOTE_ONLY_MIN_DAY_RET_PCT = 0.15
 
 ORB_VOL_MULT = 1.15
 MOM_VOL_MULT = 1.25
@@ -133,7 +134,15 @@ def _liquidity_ok(spread_pct: float, bid_q: int, ask_q: int) -> Tuple[bool, str]
     return True, "Order book depth acceptable"
 
 
-def _daily_volume_ok(symbol: str) -> Tuple[bool, int]:
+def _daily_volume_ok(symbol: str, quote: Optional[dict] = None) -> Tuple[bool, int]:
+    # Prefer the live quote's session volume. Historical candle access can be
+    # unavailable on some Kite setups; quote volume is enough for this liquidity gate.
+    try:
+        qv = int((quote or {}).get("volume") or 0)
+        if qv >= MIN_DAILY_VOLUME:
+            return True, qv
+    except Exception:
+        pass
     try:
         df = market_data.get_ohlc(symbol, interval="day", days=10)
         if df is None or df.empty:
@@ -496,6 +505,65 @@ def _try_momentum(symbol: str, ctx: Dict[str, Any]) -> Optional[IntradayDecision
     )
 
 
+def _try_quote_only_strength(
+    symbol: str,
+    quote: dict,
+    nifty_bullish: bool,
+) -> Optional[IntradayDecision]:
+    """Fallback candidate when Kite historical candles are unavailable.
+
+    This uses only current quote fields: LTP, VWAP, day OHLC, volume and depth.
+    It is deliberately conservative: long only, liquid, positive on the day,
+    above VWAP, and trading near the day's high.
+    """
+    ltp = float(quote.get("ltp") or 0.0)
+    vwap = float(quote.get("vwap") or 0.0)
+    ohlc = quote.get("ohlc") or {}
+    open_px = float(ohlc.get("open") or 0.0)
+    high_px = float(ohlc.get("high") or 0.0)
+    if ltp <= 0 or vwap <= 0 or open_px <= 0 or high_px <= 0:
+        return None
+
+    day_ret = (ltp / open_px - 1.0) * 100.0
+    above_vwap = ltp >= vwap * 1.001
+    near_high = ltp >= high_px * 0.995
+    if not (above_vwap and near_high and day_ret >= QUOTE_ONLY_MIN_DAY_RET_PCT):
+        return None
+    if not nifty_bullish and day_ret < 0.5:
+        return None
+
+    entry = ltp
+    stop = entry * (1 - 0.009)
+    target = entry * 1.02
+    risk_pct = ((entry - stop) / entry * 100) if entry else 0
+    conf, ck = _score_confidence(
+        54,
+        [
+            (above_vwap, f"Price above VWAP ({ltp:.2f} > {vwap:.2f})"),
+            (near_high, f"Near day high ({ltp:.2f} vs {high_px:.2f})"),
+            (day_ret >= QUOTE_ONLY_MIN_DAY_RET_PCT, f"Day return {day_ret:.2f}%"),
+            (nifty_bullish, "NIFTY alignment"),
+        ],
+    )
+    if conf < MIN_CONFIDENCE_TRADE:
+        return None
+
+    return IntradayDecision(
+        stock=symbol,
+        strategy="Quote Strength",
+        entry_price=round(entry, 2),
+        stop_loss=round(stop, 2),
+        target=round(target, 2),
+        risk_pct=round(risk_pct, 3),
+        confidence=float(conf),
+        quantity=0,
+        reasoning="Live-quote fallback: liquid stock holding above VWAP and near day high.",
+        indicator_notes=[f"VWAP {vwap:.2f}", f"Day ret {day_ret:.2f}%", f"Day high {high_px:.2f}"],
+        volume_notes=[f"Session volume {int(quote.get('volume') or 0):,}"],
+        market_alignment=ck,
+    )
+
+
 def _position_size(entry: float, stop: float, capital: float) -> int:
     risk_inr = max(capital, settings.DAILY_CAPITAL) * 0.01
     per_share = entry - stop
@@ -531,21 +599,34 @@ def evaluate_symbol(
         _reject(diag, "liquidity")
         return None
 
-    dv_ok, dv = _daily_volume_ok(symbol)
+    dv_ok, dv = _daily_volume_ok(symbol, quote)
     if not dv_ok:
         _reject(diag, "daily_volume")
         return None
 
     ctx = _build_5m_context(symbol, quote)
+    nifty_bullish, nifty_note = _nifty_trend_bullish()
     if not ctx:
-        _reject(diag, "short_5m_history")
-        return None
+        quote_only = _try_quote_only_strength(symbol, quote, nifty_bullish)
+        if not quote_only:
+            _reject(diag, "short_5m_history")
+            return None
+        quote_only = apply_profit_stop_profile(quote_only)
+        if quote_only is None:
+            _reject(diag, "profit_stop_profile")
+            return None
+        quote_only.quantity = _position_size(quote_only.entry_price, quote_only.stop_loss, capital)
+        quote_only.market_alignment = [nifty_note, liq_msg, f"Daily vol {dv:,}"] + quote_only.market_alignment
+        enrich_par_metadata(quote_only, capital)
+        if quote_only.quantity < 1:
+            _reject(diag, "quantity_zero")
+            return None
+        _reject(diag, "accepted_quote_only")
+        return quote_only
 
     if ctx["adx_proxy"] < 0.12 and ctx["vol_ratio"] < 1.1:
         _reject(diag, "flat_no_volume")
         return None
-
-    nifty_bullish, nifty_note = _nifty_trend_bullish()
 
     candidates: List[IntradayDecision] = []
     orb = _try_opening_range_breakout(symbol, ctx, nifty_bullish)

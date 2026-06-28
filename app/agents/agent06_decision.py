@@ -12,10 +12,10 @@ from app.agents._base import AgentResult, BaseAgent
 
 class DecisionAgent(BaseAgent):
     name = "agent06_decision"
-    description = "Confluence-of-2 voting across trend/breakout/pullback with ML+sentiment weighting."
+    description = "Confluence-of-2 voting across trend/breakout/pullback with ML+sentiment weighting and PREF planning metadata."
     interval_seconds = 15.0
     inputs = ["signal_trend", "signal_breakout", "signal_pullback", "ml_prediction", "sentiment"]
-    outputs = ["decision"]
+    outputs = ["decision", "pref_plan"]
     skills = [
         {"id": "weighted_voting", "description": "Confluence ≥2 BUYs + score ≥75 confidence."},
         {"id": "soft_weight_ml", "description": "Add 15% ML score, 10% sentiment score."},
@@ -38,6 +38,7 @@ class DecisionAgent(BaseAgent):
 
         symbols = set(trend) | set(breakout) | set(pullback)
         decisions: dict[str, dict] = {}
+        pref_plan: dict[str, dict] = {}
         for sym in symbols:
             votes = [self._vote(trend, sym), self._vote(breakout, sym), self._vote(pullback, sym)]
             buys = [(ok, conf) for ok, conf in votes if ok]
@@ -48,7 +49,15 @@ class DecisionAgent(BaseAgent):
             sent_adj = float((sentiment.get(sym) or {}).get("score") or 0.0)
             score = base + 0.15 * ml_adj + 0.10 * sent_adj
             if score >= self.min_confidence:
-                src = breakout.get(sym) or pullback.get(sym) or {}
+                src_name = "breakout" if breakout.get(sym) else ("pullback" if pullback.get(sym) else "trend")
+                src = breakout.get(sym) or pullback.get(sym) or trend.get(sym) or {}
+                reasoning = [
+                    f"confluence={len(buys)}/3",
+                    f"base_conf={base:.1f}",
+                    f"ml_adj={0.15 * ml_adj:.1f}",
+                    f"sent_adj={0.10 * sent_adj:.1f}",
+                    f"selected_strategy={src_name}",
+                ]
                 decisions[sym] = {
                     "vote": "BUY",
                     "confidence": round(score, 1),
@@ -56,6 +65,17 @@ class DecisionAgent(BaseAgent):
                     "entry": src.get("entry"),
                     "stop": src.get("stop"),
                     "target": src.get("target"),
+                    "pref": {
+                        "planning": f"Plan BUY {sym} using {src_name} setup with confluence >=2.",
+                        "reasoning": reasoning,
+                        "feedback": "Wait for risk gate; if approved, execute once and monitor fill/SL/TGT.",
+                    },
+                }
+                pref_plan[sym] = {
+                    "planning": f"{sym}: execute {src_name} if risk passes",
+                    "reasoning": reasoning,
+                    "feedback": "Re-score next cycle if rejected.",
                 }
         self.bus.set("decision", decisions)
-        return AgentResult(self.name, True, payload={"approved": len(decisions)})
+        self.bus.set("pref_plan", pref_plan)
+        return AgentResult(self.name, True, payload={"approved": len(decisions), "task": "planned_pref"})

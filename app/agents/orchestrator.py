@@ -31,6 +31,18 @@ from app.agents.agent12_portfolio import PortfolioAgent
 
 log = logging.getLogger(__name__)
 
+PRIMARY_9_AGENTS = [
+    "agent01_data",
+    "agent02_feature",
+    "agent03_trend",
+    "agent04_breakout",
+    "agent05_pullback",
+    "agent06_decision",
+    "agent07_risk",
+    "agent08_execution",
+    "agent09_sentiment",
+]
+
 
 class Orchestrator:
     def __init__(self) -> None:
@@ -51,11 +63,9 @@ class Orchestrator:
         ]
 
     def start_all(self) -> None:
-        # agent08 stays disarmed: the TradingEngine is the sole order executor, so
-        # leaving bus["auto_execute"] False prevents the agent pipeline from placing
-        # a DUPLICATE bracket order for the same setup. The 12 agents run for
-        # monitoring/signals/risk-alerts only.
-        self.bus.set("auto_execute", False)
+        # Preserve any explicit UI choice; default to off if unset.
+        if self.bus.get("auto_execute") is None:
+            self.bus.set("auto_execute", False)
         for agent in self.agents:
             agent.start()
         log.info("orchestrator_started agents=%d", len(self.agents))

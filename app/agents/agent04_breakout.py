@@ -7,7 +7,7 @@ intraday_agent so signal semantics stay identical to the live engine.
 from __future__ import annotations
 
 from app.agents._base import AgentResult, BaseAgent
-from app.core.intraday_agent import _try_opening_range_breakout, session_capital
+from app.core.intraday_agent import _nifty_trend_bullish, _try_opening_range_breakout
 
 
 class BreakoutAgent(BaseAgent):
@@ -26,10 +26,10 @@ class BreakoutAgent(BaseAgent):
         features = self.bus.get("features", max_age_s=30.0) or {}
         if not features:
             return AgentResult(self.name, False, error="no features")
-        capital = session_capital()
+        bias_ok, _ = _nifty_trend_bullish()
         votes: dict[str, dict] = {}
         for sym, ctx in features.items():
-            decision = _try_opening_range_breakout(sym, ctx, capital)
+            decision = _try_opening_range_breakout(sym, ctx, bias_ok)
             if decision is not None:
                 votes[sym] = {
                     "vote": "BUY",

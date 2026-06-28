@@ -1,10 +1,22 @@
-# A Day in the Life of Your ₹2,000 Intraday Bot
+# A Day in the Life of Your ₹2,000 Intraday Bot (9-Agent Real-Trade Flow)
 
-A storytelling walk-through of what happens between the moment you click **Enable bot** and the broker's automatic 3:30 PM square-off. Cast of 12 agents, each with one job, all running on their own clocks.
+A storytelling walk-through of what happens between the moment you click **Enable bot** and the broker's automatic 3:30 PM square-off. This version focuses on the **9 primary trading agents** that now drive execution.
 
 ---
 
-## The cast
+## Evaluation: why real trading was not happening
+
+Before this update, the app could look active but still not place real orders because:
+
+- Agent execution was effectively disarmed (`bus["auto_execute"]` stayed off in the orchestrator path).
+- UI state primarily reflected engine-side auto-execute, not the 9-agent execution gate.
+- Multiple filters could reject setups without clear task-state visibility.
+
+After this update, the 9-agent pipeline is the primary execution path when auto-execute is ON.
+
+---
+
+## The 9 Primary Agents (Role Evaluation)
 
 | # | File | Character | Lives by |
 |---|---|---|---|
@@ -14,18 +26,27 @@ A storytelling walk-through of what happens between the moment you click **Enabl
 | 4 | [agent04_breakout.py](app/agents/agent04_breakout.py) | **The Breakout Hunter** | "Did anyone just break out?" — opening-range breakout |
 | 5 | [agent05_pullback.py](app/agents/agent05_pullback.py) | **The Patient Buyer** | "Did price tap VWAP and bounce?" — pullback setup |
 | 6 | [agent06_decision.py](app/agents/agent06_decision.py) | **The Council** | "Do two of you agree?" — confluence voting |
-| 7 | [agent07_risk.py](app/agents/agent07_risk.py) | **The Gatekeeper** | "Is this worth ₹200 of our capital?" — risk + spike veto |
+| 7 | [agent07_risk.py](app/agents/agent07_risk.py) | **The Gatekeeper** | "Is this minimally tradable?" — essential guardrails only |
 | 8 | [agent08_execution.py](app/agents/agent08_execution.py) | **The Trader** | Places bracket order with Kite |
 | 9 | [agent09_sentiment.py](app/agents/agent09_sentiment.py) | **The News Reader** | Only agent that calls the LLM (OpenAI) |
-| 10 | [agent10_ml_prediction.py](app/agents/agent10_ml_prediction.py) | **The Forecaster** | Lightweight probability model |
-| 11 | [agent11_monitoring.py](app/agents/agent11_monitoring.py) | **The Watchman** | Heartbeats the other 11 |
-| 12 | [agent12_portfolio.py](app/agents/agent12_portfolio.py) | **The Treasurer** | Tracks funds + open positions |
+
+Supporting services (monitoring, portfolio, ML) can still run, but real-trade decisions are centered on these 9.
+
+---
+
+## PREF loop (Planning, Reasoning, Feedback)
+
+Each trade candidate now carries a proactive PREF trail through the chain:
+
+- **Planning:** Decision agent writes a concrete execution plan per symbol.
+- **Reasoning:** Decision + Risk agents explain score mix and guardrail pass/fail.
+- **Feedback:** Risk/Execution agents publish actionable status (`approved`, `rejected`, `executed`, `skipped`) for the next cycle.
 
 ---
 
 ## What "proactive" means here
 
-Every agent has its own **background thread** (daemon) and its own **tick interval**. Nobody waits to be asked. When you click **Enable bot**, twelve clocks start at once:
+Every agent has its own **background thread** (daemon) and its own **tick interval**. Nobody waits to be asked. When you click **Enable bot**, the 9 primary trading clocks start at once:
 
 | Agent | Wakes up every |
 |---|---|
@@ -33,12 +54,22 @@ Every agent has its own **background thread** (daemon) and its own **tick interv
 | Feature (Analyst) | 5 sec |
 | Trend / Breakout / Pullback | 10 sec each |
 | Decision / Risk / Execution | 15 sec each |
-| ML Prediction | 30 sec |
-| Portfolio | 30 sec |
-| Monitoring | 10 sec |
 | Sentiment (LLM) | 5 min |
 
 They don't talk to each other directly. They write to a thread-safe bulletin board (`AgentBus`) and the next agent in the chain picks up what's relevant.
+
+---
+
+## Minimal Guardrails (on-the-fly)
+
+Guardrails were reduced to essentials for actual execution readiness:
+
+- Stop loss must be **strictly below 10%** from entry.
+- Target must be **at least 10%** from entry.
+- Valid bracket geometry only: `entry > stop` and `target > entry`.
+- Capacity limits only: max open positions and max trades/day.
+
+Strategy selection is dynamic per cycle from available signal evidence (trend, breakout, pullback) rather than hard-wiring one static path.
 
 ---
 
@@ -98,7 +129,7 @@ Phase: `closed`. Threads keep ticking but every agent's `run_once()` short-circu
 
 ## So — does it monitor till 3:30 PM?
 
-**Yes, continuously.** The 12 daemon threads tick non-stop from the moment you enable the bot until you disable it. But "monitor" and "trade" are different:
+**Yes, continuously.** The 9 primary trading agents tick non-stop from the moment you enable the bot until you disable it. But "monitor" and "trade" are different:
 
 - **Scanning (read-only)** happens during *every* phase the market is open
 - **Trading (placing real orders)** happens *only* in the **active phase (10:15 – 14:45 IST)**
@@ -134,7 +165,7 @@ The math, with the hard rules baked in:
 A green day with 3 winning trades each hitting +10% on a ₹700 ticket = ₹210 profit ≈ **10% of session capital**.
 A red day with 3 losers hitting -3% each = ₹63 → bot halts via the 3% daily loss rule.
 
-This is by design. The 12 agents are biased toward **few, high-conviction trades** rather than churning the entire active window.
+This is by design. The 9-agent execution chain is biased toward **few, high-conviction trades** rather than churning the entire active window.
 
 ---
 
@@ -142,7 +173,7 @@ This is by design. The 12 agents are biased toward **few, high-conviction trades
 
 1. Make sure your Kite account has ≥ ₹2,000 in equity segment cash + login is fresh (token expires daily).
 2. Open the dashboard.
-3. Click **Enable bot** in the sidebar. The orchestrator starts all 12 daemon threads.
+3. Click **Enable bot** in the sidebar. The orchestrator starts the 9 primary trading agents.
 4. Optional: flip **Auto-execute orders** ON. Without this, the bot scans and shows candidates but you place orders manually from the Signals tab.
 5. Watch the *Agent system (12)* panel — each agent shows a green/grey dot for status. Click the *card* link next to any agent to see its capability JSON at `http://127.0.0.1:8000/agents/agentNN_name/card.json` (when running locally).
 6. Top status strip shows phase, equity, trades used, risk used, square-off countdown. The 🔥 **KILL ALL** button is always there as a panic stop — disables the bot AND cancels every open Kite order in one click.

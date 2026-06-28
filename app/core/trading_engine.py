@@ -28,6 +28,7 @@ from app.core.risk_engine import RiskEngine
 from app.core.zerodha_auth import zerodha_auth
 
 log = logging.getLogger("engine")
+ENTRY_LIMIT_BUFFER_PCT = 0.12
 
 # Phase constants
 PHASE_PRE_MARKET = "pre_market"
@@ -313,7 +314,8 @@ class TradingEngine:
                     "warn",
                 )
                 break
-            notional = d.entry_price * d.quantity
+            entry_limit = round(float(d.entry_price) * (1 + ENTRY_LIMIT_BUFFER_PCT / 100.0), 2)
+            notional = entry_limit * d.quantity
             sl_pct = d.risk_pct / 100.0
             ok_risk, msg_risk = self.risk_engine.can_place_trade(notional, assumed_sl_pct=sl_pct)
             if not ok_risk:
@@ -323,7 +325,7 @@ class TradingEngine:
                 b = mgr.open_bracket(
                     symbol=d.stock,
                     quantity=int(d.quantity),
-                    entry_price=float(d.entry_price),
+                    entry_price=entry_limit,
                     stop_price=float(d.stop_loss),
                     target_price=float(d.target),
                 )
@@ -332,7 +334,8 @@ class TradingEngine:
                     continue
                 self.risk_engine.daily_stats.total_trades += 1
                 self._log(
-                    f"{mode} BUY {d.stock} qty={d.quantity} entry=₹{d.entry_price:.2f} "
+                    f"{mode} BUY {d.stock} qty={d.quantity} limit=₹{entry_limit:.2f} "
+                    f"signal=₹{d.entry_price:.2f} "
                     f"tgt=₹{d.target:.2f} sl=₹{d.stop_loss:.2f} id={b.entry_id}"
                 )
             except Exception as e:

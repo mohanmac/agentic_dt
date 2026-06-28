@@ -187,7 +187,7 @@ def get_orch():
 
 
 def orch_running() -> bool:
-    """Is the 12-agent loop actually running? (process-wide truth)
+    """Is the agent loop actually running? (process-wide truth)
 
     Computed from agent thread liveness rather than orch.running, because the
     Orchestrator is an @st.cache_resource singleton: on a hot redeploy Streamlit
@@ -224,17 +224,28 @@ PULSE_CSS = """
   border-radius: 50%; background: #16a34a; margin-right: 6px;
   vertical-align: middle; animation: pulseDot 1.1s ease-in-out infinite;
 }
-.idle-dot {
+.dormant-dot {
   display: inline-block; width: 9px; height: 9px;
-  border-radius: 50%; background: #6b7280; margin-right: 6px;
-  vertical-align: middle; opacity: 0.45;
+    border-radius: 50%; background: #f59e0b; margin-right: 6px;
+    vertical-align: middle; opacity: 0.85;
 }
-.warn-dot {
+.done-dot {
   display: inline-block; width: 9px; height: 9px;
-  border-radius: 50%; background: #f59e0b; margin-right: 6px;
+    border-radius: 50%; background: #dc2626; margin-right: 6px;
   vertical-align: middle;
 }
 .agent-line { font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; line-height: 1.5; }
+.flow-chip {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 0 7px;
+    font-size: 0.66rem;
+    line-height: 1.5;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.flow-parallel { background: rgba(59,130,246,0.22); color: #93c5fd; }
+.flow-sequence { background: rgba(16,185,129,0.20); color: #6ee7b7; }
 </style>
 """
 
@@ -402,6 +413,7 @@ def sidebar_funds() -> None:
 def sidebar_engine_controls() -> None:
     st.sidebar.subheader("Bot controls")
     snap = get_engine().snapshot()
+    orch = get_orch()
 
     # Reconcile process-global state vs this browser session. The engine + orchestrator
     # are @st.cache_resource singletons (process-wide), but the bot can be enabled in one
@@ -418,6 +430,7 @@ def sidebar_engine_controls() -> None:
                 log.info("UI: Disable bot clicked")
                 get_engine().disable()
                 get_engine().set_auto_execute(False)
+                orch.set_auto_execute(False)
                 ss["auto_exec_checkbox"] = False
                 # Stop the loop based on the real process-wide state, not this
                 # session's flag — a session that didn't start it must still be able
@@ -431,8 +444,12 @@ def sidebar_engine_controls() -> None:
             ):
                 log.info("UI: Enable bot clicked")
                 get_engine().enable()
+                # Keep engine as phase/risk monitor; real dispatch runs through
+                # the 9-agent chain (agent08 execution).
+                get_engine().set_auto_execute(False)
                 if not orch_running():
-                    get_orch().start_all()
+                    orch.start_all()
+                orch.set_auto_execute(True)
                 # Mark THIS session as having armed the bot — auto_logoff keys off this
                 # so an after-hours review session is never force-logged-off.
                 ss.agents_running = True
@@ -442,11 +459,10 @@ def sidebar_engine_controls() -> None:
         log.exception("Bot toggle failed")
         st.sidebar.error(f"Toggle failed: {e}")
 
-    # Real-order gate. Enabling the bot turns this on automatically. The engine
-    # is the sole executor; agent08 remains disarmed through bus["auto_execute"]
-    # to avoid duplicate orders.
+    # Real-order gate for the 9-agent execution path.
     try:
-        ss.setdefault("auto_exec_checkbox", snap.auto_execute)
+        orch_auto = bool(orch.bus.get("auto_execute") or False)
+        ss.setdefault("auto_exec_checkbox", orch_auto)
         ss.setdefault("auto_exec_confirm", False)
         live = bool(getattr(settings, "ENABLE_LIVE_TRADING", False))
         st.sidebar.checkbox(
@@ -465,17 +481,19 @@ def sidebar_engine_controls() -> None:
         if new_auto and not ss.get("auto_exec_confirm"):
             st.sidebar.error("Confirm the Auto-execute risk acknowledgement first.")
             new_auto = False
-        if new_auto != snap.auto_execute:
-            get_engine().set_auto_execute(new_auto)
+        if new_auto != orch_auto:
+            orch.set_auto_execute(new_auto)
+        # Prevent duplicate order paths: keep engine execution disabled.
+        get_engine().set_auto_execute(False)
         if new_auto and live:
-            st.sidebar.warning("⚠️ Auto-execute ON · **LIVE** — REAL Zerodha MIS orders may be placed.")
+            st.sidebar.warning("⚠️ Auto-execute ON · **LIVE** — agent08 can place REAL Zerodha MIS orders.")
         elif new_auto:
             st.sidebar.info(
-                "Auto-execute ON · **DRY-RUN** — orders are simulated, **no real money**. "
+                "Auto-execute ON · **DRY-RUN** — 9-agent pipeline is armed but orders are simulated. "
                 "Set `ENABLE_LIVE_TRADING=true` in Secrets to trade for real."
             )
         else:
-            st.sidebar.caption("Monitoring only — engine scans; no automatic broker orders.")
+            st.sidebar.caption("Monitoring only — agent pipeline scans; no automatic broker orders.")
     except Exception as e:
         log.exception("Auto-execute toggle failed")
         st.sidebar.error(f"Auto-exec toggle failed: {e}")
@@ -483,9 +501,32 @@ def sidebar_engine_controls() -> None:
 
 AGENT_NAMES = [
     "agent01_data", "agent02_feature", "agent03_trend", "agent04_breakout",
-    "agent05_pullback", "agent06_decision", "agent07_risk", "agent08_execution",
-    "agent09_sentiment", "agent10_ml_prediction", "agent11_monitoring", "agent12_portfolio",
+    "agent05_pullback", "agent06_decision", "agent07_risk", "agent08_execution", "agent09_sentiment",
 ]
+
+AGENT_INTERVALS = {
+    "agent01_data": 5.0,
+    "agent02_feature": 5.0,
+    "agent03_trend": 10.0,
+    "agent04_breakout": 10.0,
+    "agent05_pullback": 10.0,
+    "agent06_decision": 15.0,
+    "agent07_risk": 15.0,
+    "agent08_execution": 15.0,
+    "agent09_sentiment": 300.0,
+}
+
+AGENT_FLOW = {
+    "agent01_data": ("parallel", "P1 ingest"),
+    "agent02_feature": ("parallel", "P1 features"),
+    "agent03_trend": ("parallel", "P2 signal"),
+    "agent04_breakout": ("parallel", "P2 signal"),
+    "agent05_pullback": ("parallel", "P2 signal"),
+    "agent06_decision": ("sequence", "S1 confluence"),
+    "agent07_risk": ("sequence", "S2 risk"),
+    "agent08_execution": ("sequence", "S3 execute"),
+    "agent09_sentiment": ("parallel", "P0 context"),
+}
 
 
 def _agent_action_text(last) -> str:
@@ -500,43 +541,68 @@ def _agent_action_text(last) -> str:
     return "ok"
 
 
+def _agent_state(name: str, last) -> tuple[str, str]:
+    if last is None:
+        return "dormant", "DORMANT"
+    if not getattr(last, "ok", True):
+        return "dormant", "DORMANT"
+    age_s = (datetime.now() - last.ts).total_seconds()
+    interval = AGENT_INTERVALS.get(name, 15.0)
+    if age_s <= max(2.0, interval * 0.6):
+        return "active", "ACTIVE"
+    payload = getattr(last, "payload", None)
+    if isinstance(payload, dict):
+        # Finished = completed useful work in last successful tick.
+        for k in ("placed", "approved", "buys", "symbols", "scored"):
+            v = payload.get(k)
+            if isinstance(v, (int, float)) and v > 0:
+                return "finished", "FINISHED"
+    return "dormant", "DORMANT"
+
+
+def _agent_flow_badge(name: str) -> str:
+    mode, label = AGENT_FLOW.get(name, ("parallel", "P?"))
+    klass = "flow-sequence" if mode == "sequence" else "flow-parallel"
+    mode_text = "SEQ" if mode == "sequence" else "PAR"
+    return f"<span class='flow-chip {klass}'>{mode_text} · {label}</span>"
+
+
 def _agents_fragment() -> None:
-    """Renders the 12-agent panel. Refreshes with the page every 15s (see
+    """Renders the 9-agent panel. Refreshes with the page every 15s (see
     auto_refresh()); a per-fragment run_every broke first-render on Streamlit Cloud."""
-    st.subheader("Agent system (12)")
+    st.subheader("Agent system (9)")
     # Read the real, process-wide loop state — not ss.agents_running, which is a
     # per-session flag (kept only as the auto-logoff guard) and is False on a fresh
     # session even while the loop is running from another session in the same process.
     if not orch_running():
-        st.caption("Idle — Enable bot to start the 12-agent loop.")
+        st.caption("Idle — Enable bot to start the 9-agent loop.")
         return
     health = get_orch().bus.get("health") or {}
     ok = sum(1 for v in health.values() if v.get("status") == "OK")
-    st.caption(f"{ok}/{len(AGENT_NAMES)} OK · auto-refreshes every 15s")
+    st.caption(f"{ok}/{len(AGENT_NAMES)} healthy · auto-refreshes every 15s")
+    st.caption("Flow: PAR lanes = 01/02 + 03/04/05 + 09, SEQ chain = 06 → 07 → 08")
 
     for name in AGENT_NAMES:
         last = get_orch().bus.get(f"last_result:{name}")
-        recent = bool(last and (datetime.now() - last.ts).total_seconds() <= 2.0)
         info = health.get(name) or {}
-        status = info.get("status")
-        if recent:
+        state, state_text = _agent_state(name, last)
+        if state == "active":
             dot = '<span class="pulse-dot"></span>'
-        elif status == "OK":
-            dot = '<span class="pulse-dot" style="animation: none; opacity: 0.7;"></span>'
-        elif status == "DEGRADED":
-            dot = '<span class="warn-dot"></span>'
+        elif state == "finished":
+            dot = '<span class="done-dot"></span>'
         else:
-            dot = '<span class="idle-dot"></span>'
+            dot = '<span class="dormant-dot"></span>'
         stale = info.get("stale_s")
         suffix = f"<span style='color:#888'> · {stale:.1f}s</span>" if isinstance(stale, (int, float)) else ""
         if is_streamlit_cloud():
             card_link = "<span style='color:#888'>card (local API)</span>"
         else:
             card_link = f"<a href='http://127.0.0.1:8000/agents/{name}/card.json' target='_blank' style='color:#3b82f6; text-decoration:none;'>card</a>"
+        flow_badge = _agent_flow_badge(name)
         action = _agent_action_text(last)
         st.markdown(
-            f"<div class='agent-line'>{dot}{name}{suffix} · {card_link}</div>"
-            f"<div class='agent-line' style='margin-left:15px;color:#9aa0a6'>↳ {action}</div>",
+            f"<div class='agent-line'>{dot}{name} <span style='color:#ddd'>[{state_text}]</span>{flow_badge}{suffix} · {card_link}</div>"
+            f"<div class='agent-line' style='margin-left:15px;color:#9aa0a6'>↳ task: {action}</div>",
             unsafe_allow_html=True,
         )
 
@@ -617,7 +683,7 @@ def auto_mode_state(capital: float, snap) -> dict:
         risk_alerts = get_orch().bus.get("risk_alerts", max_age_s=45.0) or []
     except Exception:
         pass
-    candidates = snap.candidates or []
+    orch_auto = bool(get_orch().bus.get("auto_execute") or False)
     reasons: list[str] = []
     market_ok, market_msg = can_place_nse_bse_equity_trade()
     if not ss.authed:
@@ -626,8 +692,6 @@ def auto_mode_state(capital: float, snap) -> dict:
         reasons.append("Streamlit Secrets missing KITE_API_KEY")
     if not settings.KITE_API_SECRET or settings.KITE_API_SECRET.strip() == "your_api_secret_here":
         reasons.append("Streamlit Secrets missing KITE_API_SECRET")
-    if not settings.OPENAI_API_KEY and settings.LLM_PROVIDER.lower() == "openai":
-        reasons.append("Streamlit Secrets missing OPENAI_API_KEY")
     if not bool(getattr(settings, "ENABLE_LIVE_TRADING", False)):
         reasons.append("ENABLE_LIVE_TRADING is false (DRY-RUN only)")
     if not market_ok:
@@ -635,8 +699,8 @@ def auto_mode_state(capital: float, snap) -> dict:
     if not snap.enabled:
         reasons.append("Bot disabled")
     if not orch_running():
-        reasons.append("12-agent loop not running")
-    if not snap.auto_execute:
+        reasons.append("9-agent loop not running")
+    if not orch_auto:
         reasons.append("Auto-execute OFF")
     if snap.phase != PHASE_ACTIVE:
         reasons.append(f"Outside active phase: {snap.phase_label or snap.phase}")
@@ -646,9 +710,9 @@ def auto_mode_state(capital: float, snap) -> dict:
         reasons.append(f"Max trades/day reached ({re.config.max_trades_per_day})")
     if len(open_syms) >= re.config.max_open_positions:
         reasons.append(f"Max open positions reached ({len(open_syms)}/{re.config.max_open_positions})")
-    if snap.enabled and snap.phase == PHASE_ACTIVE and not candidates and not approved:
-        reasons.append("No approved decision / no engine candidate yet")
-    if risk_alerts and not approved and candidates:
+    if snap.enabled and snap.phase == PHASE_ACTIVE and not approved:
+        reasons.append("No approved decision yet from agents")
+    if risk_alerts and not approved:
         latest = risk_alerts[0]
         reasons.append(f"Risk rejected latest setup: {latest.get('reason', 'unknown')}")
     for ev in reversed(snap.activity[-5:]):
@@ -662,7 +726,7 @@ def auto_mode_state(capital: float, snap) -> dict:
         "reasons": reasons,
         "logged_in": bool(ss.authed),
         "bot_enabled": bool(snap.enabled),
-        "auto_execute": bool(snap.auto_execute),
+        "auto_execute": bool(orch_auto),
         "phase": snap.phase_label or snap.phase,
         "open_count": len(open_syms),
         "max_open": re.config.max_open_positions,
@@ -1145,7 +1209,7 @@ def dashboard() -> None:
 # Auto-refresh + auto-logoff
 # ─────────────────────────────────────────────────────────────────────────────
 def auto_refresh(interval_ms: int = 15_000, key: str = "dash_autorefresh") -> None:
-    """Re-run the script every interval_ms so the 12-agent status, candidates and
+    """Re-run the script every interval_ms so the 9-agent status, candidates and
     countdowns stay live without a manual click.
 
     Uses streamlit-autorefresh — a websocket-driven rerun, NOT a full browser

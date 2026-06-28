@@ -13,10 +13,10 @@ from app.core.live_broker import LiveBroker
 
 class ExecutionAgent(BaseAgent):
     name = "agent08_execution"
-    description = "Places bracket orders via Kite for approved decisions; idempotent; gated by bus['auto_execute']."
+    description = "Places bracket orders via Kite for approved decisions; idempotent; gated by bus['auto_execute']; emits PREF feedback."
     interval_seconds = 15.0
     inputs = ["approved_decision", "auto_execute"]
-    outputs = ["executed_today"]
+    outputs = ["executed_today", "pref_feedback"]
     skills = [
         {"id": "place_bracket_order", "description": "Entry + SL + target on one call."},
         {"id": "idempotent_dispatch", "description": "Tracks placed symbols so re-ticks don't double-fire."},
@@ -39,14 +39,15 @@ class ExecutionAgent(BaseAgent):
     def run_once(self) -> AgentResult:
         approved = self.bus.get("approved_decision", max_age_s=30.0) or {}
         if not approved:
-            return AgentResult(self.name, True, payload={"placed": 0})
+            return AgentResult(self.name, True, payload={"placed": 0, "task": "idle"})
         if not bool(self.bus.get("auto_execute") or False):
-            return AgentResult(self.name, True, payload={"placed": 0, "skipped": "auto_execute_off"})
+            return AgentResult(self.name, True, payload={"placed": 0, "skipped": "auto_execute_off", "task": "gated"})
         broker = self._get_broker()
         if broker is None:
             return AgentResult(self.name, False, error="awaiting kite login")
         done: set[str] = set(self.bus.get("executed_today") or set())
         placed = 0
+        feedback: dict[str, dict] = self.bus.get("pref_feedback") or {}
         for sym, dec in approved.items():
             if sym in done:
                 continue
@@ -54,6 +55,7 @@ class ExecutionAgent(BaseAgent):
             notional = dec.get("notional") or 0
             qty = max(1, int(notional / entry)) if entry else 0
             if not (entry and stop and tgt and qty):
+                feedback[sym] = {"status": "skipped", "reason": "missing_order_fields"}
                 continue
             broker.place_bracket_buy(
                 symbol=sym,
@@ -64,5 +66,12 @@ class ExecutionAgent(BaseAgent):
             )
             done.add(sym)
             placed += 1
+            feedback[sym] = {
+                "status": "executed",
+                "planning": f"Order sent for {sym} qty={qty}.",
+                "reasoning": "Approved by decision+risk chain and auto_execute enabled.",
+                "feedback": "Monitor fills and bracket lifecycle; avoid duplicate symbol re-entry today.",
+            }
         self.bus.set("executed_today", done)
-        return AgentResult(self.name, True, payload={"placed": placed})
+        self.bus.set("pref_feedback", feedback)
+        return AgentResult(self.name, True, payload={"placed": placed, "task": "orders_sent"})
