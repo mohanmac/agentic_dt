@@ -3,6 +3,7 @@ Scheduler and orchestrator for the trading loop.
 Coordinates all 3 agents and manages the trading workflow.
 """
 import time
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 import signal
@@ -14,7 +15,7 @@ from app.core.storage import storage
 from app.core.market_data import market_data
 from app.agents.strategy_brain import strategy_brain
 from app.agents.risk_policy import risk_policy
-from app.agents.execution_paper import execution_paper
+from app.agents.execution_paper import ExecutionPaperAgent
 from app.core.llm import llm_client
 
 
@@ -35,6 +36,18 @@ class TradingScheduler:
         self.running = False
         self.loop_interval = 60  # 1 minute
         self.symbols = settings.get_trading_symbols()
+        
+        # Initialize appropriate broker and execution agent
+        if settings.ENABLE_LIVE_TRADING and not paper_mode:
+            from app.core.live_broker import LiveBroker
+            broker = LiveBroker()
+            self.execution_agent = ExecutionPaperAgent(broker=broker)
+            logger.info("✓ TradingScheduler initialized with LIVE broker")
+        else:
+            from app.core.paper_broker import PaperBroker
+            broker = PaperBroker()
+            self.execution_agent = ExecutionPaperAgent(broker=broker)
+            logger.info("✓ TradingScheduler initialized with PAPER broker")
         
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -61,6 +74,20 @@ class TradingScheduler:
         if not self._validate_prerequisites():
             logger.error("Prerequisites not met, cannot start trading loop")
             return
+        
+        # Try to acquire session lock (prevent duplicate trading during market hours)
+        mode = "LIVE" if settings.ENABLE_LIVE_TRADING and not self.paper_mode else "PAPER"
+        success, message = storage.acquire_session_lock(trading_mode=mode)
+        
+        if not success:
+            logger.warning(f"\n{'='*80}")
+            logger.warning(message)
+            logger.warning(f"{'='*80}\n")
+            logger.info("Launching monitoring window instead...")
+            self._show_monitoring_window()
+            return
+        
+        logger.info(message)
         
         self.running = True
         
@@ -156,7 +183,7 @@ class TradingScheduler:
         
         # Step 1: Monitor existing positions
         logger.info("\n[1/5] Monitoring positions...")
-        exit_actions = execution_paper.monitor_positions()
+        exit_actions = self.execution_agent.monitor_positions()
         
         if exit_actions:
             for action in exit_actions:
@@ -167,7 +194,7 @@ class TradingScheduler:
         # If SAFE_MODE, flatten all positions and stop
         if daily_state.safe_mode:
             logger.warning("SAFE_MODE active - flattening all positions")
-            execution_paper.flatten_all_positions("safe_mode")
+            self.execution_agent.flatten_all_positions("safe_mode")
             return
         
         # If exit-only mode, skip new trade generation
@@ -241,7 +268,7 @@ class TradingScheduler:
                 # Step 5: Execution
                 logger.info(f"\n[5/5] Executing trade for {symbol}...")
                 
-                order = execution_paper.execute(intent, approval)
+                order = self.execution_agent.execute(intent, approval)
                 
                 if order and order.status == OrderStatus.FILLED:
                     logger.info(f"  ORDER FILLED: {order.side.value} {order.quantity} @ ₹{order.fill_price:.2f}, "
@@ -264,13 +291,58 @@ class TradingScheduler:
         """Cleanup before shutdown."""
         logger.info("Performing cleanup...")
         
+        # Release session lock
+        storage.release_session_lock()
+        
         # Flatten positions if end of day
         if is_exit_only_time():
             logger.info("End of day - flattening all positions")
-            execution_paper.flatten_all_positions("end_of_day")
+            self.execution_agent.flatten_all_positions("end_of_day")
         
         log_event("trading_loop_stopped")
         logger.info("Trading loop stopped")
+    
+    def _show_monitoring_window(self):
+        """
+        Show monitoring window for existing trading session.
+        Called when session lock is already active on another device.
+        """
+        import subprocess
+        
+        logger.info("\nLaunching monitoring window...")
+        logger.info("This window will show the existing trading session on another device.")
+        logger.info("Market closes at 3:30 PM - session will be released then.\n")
+        
+        try:
+            # Launch monitoring window
+            monitoring_path = os.path.join(
+                os.path.dirname(__file__),
+                '..',
+                '..',
+                'ui',
+                'monitoring_window.py'
+            )
+            
+            subprocess.Popen([
+                "streamlit", "run",
+                monitoring_path,
+                "--logger.level=error"
+            ])
+            
+            logger.info("Monitoring window launched. Keep this terminal open to monitor the active session.")
+            logger.info("Press Ctrl+C to close when done monitoring.")
+            
+            # Keep terminal open showing status
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                logger.info("Monitoring stopped.")
+        
+        except Exception as e:
+            logger.error(f"Could not launch monitoring window: {e}")
+            logger.info("You can manually view it by running:")
+            logger.info("  streamlit run ui/monitoring_window.py --logger.level=error")
 
 
 def run_paper_trading():
