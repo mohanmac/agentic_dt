@@ -19,6 +19,7 @@ PERSISTED_KEYS = {
     "risk_alerts",
     "decision",
     "health",
+    "market_data_error",
 }
 
 

@@ -46,6 +46,7 @@ _boot_status = st.empty()
 _boot_status.info("Loading dashboard…")
 
 log = logging.getLogger("app")
+log.info("dashboard_module_loaded")
 
 try:
     from app.core.config import settings
@@ -907,9 +908,11 @@ def auto_mode_state(capital: float, snap) -> dict:
     loss_used = max(0.0, -re.daily_stats.total_pnl)
     approved = {}
     risk_alerts = []
+    market_data_error = {}
     try:
         approved = get_orch().bus.get("approved_decision", max_age_s=45.0) or {}
         risk_alerts = get_orch().bus.get("risk_alerts", max_age_s=45.0) or []
+        market_data_error = get_orch().bus.get("market_data_error", max_age_s=120.0) or {}
     except Exception:
         pass
     orch_auto = bool(get_orch().bus.get("auto_execute") or False)
@@ -931,6 +934,9 @@ def auto_mode_state(capital: float, snap) -> dict:
         reasons.append("9-agent loop not running")
     if not orch_auto:
         reasons.append("Auto-execute OFF")
+    if market_data_error:
+        err = str(market_data_error.get("error") or "unknown")
+        reasons.append(f"Kite market-data blocked: {err}")
     if snap.phase != PHASE_ACTIVE:
         reasons.append(f"Outside active phase: {snap.phase_label or snap.phase}")
     if re.daily_stats.is_trading_halted:

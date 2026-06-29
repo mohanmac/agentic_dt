@@ -9,6 +9,7 @@ directly, which is how local dev runs it (and why local always worked).
 """
 import sys
 import importlib
+import logging
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -26,6 +27,8 @@ from app.core.env_bootstrap import apply_env_bootstrap
 apply_env_bootstrap()
 
 import streamlit as st
+
+logging.getLogger("streamlit_app").info("streamlit_entry_render root=%s", ROOT)
 
 try:
     _mod = sys.modules.get("ui.dashboard")

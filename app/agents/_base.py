@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -78,13 +79,23 @@ class BaseAgent(ABC):
 
     def _loop(self) -> None:
         while not self._stop.is_set():
+            started = time.perf_counter()
             try:
                 res = self.run_once()
             except Exception as exc:
                 log.exception("agent_tick_failed name=%s", self.name)
                 res = AgentResult(agent=self.name, ok=False, error=str(exc))
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
             self._last = res
             self.bus.set(f"last_result:{self.name}", res)
+            log.info(
+                "agent_tick name=%s ok=%s elapsed_ms=%s payload=%s error=%s",
+                self.name,
+                res.ok,
+                elapsed_ms,
+                res.payload,
+                res.error,
+            )
             if self._stop.wait(self.interval_seconds):
                 return
 
